@@ -1,16 +1,10 @@
 ﻿using NAudio.CoreAudioApi;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 using VibroAnalizer.Core.Models;
 using NAudio.Wave;
 
 namespace VibroAnalizer.Core.services
 {
-    internal class AudioCapture:IDisposable
+    public class AudioCapture:IDisposable
     {
         private WasapiCapture _capture;
         private double[] _buffer;

@@ -1,11 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.37301.10 d17.14
+VisualStudioVersion = 17.14.37301.10
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibroAnalizer.Core", "VibroAnalizer.Core\VibroAnalizer.Core.csproj", "{87ADFDF3-6A71-4C94-810B-3440A16D56EB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibroAnalyzer.Core", "VibroAnalizer.Core\VibroAnalyzer.Core.csproj", "{87ADFDF3-6A71-4C94-810B-3440A16D56EB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibroAnalizer.WPF", "VibroAnalizer.WPF\VibroAnalizer.WPF.csproj", "{912ED996-74E1-4E6D-80E6-CC781A60C821}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibroAnalyzer.WPF", "VibroAnalizer.WPF\VibroAnalyzer.WPF.csproj", "{912ED996-74E1-4E6D-80E6-CC781A60C821}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

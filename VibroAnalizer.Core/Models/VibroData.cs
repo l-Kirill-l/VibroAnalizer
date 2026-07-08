@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace VibroAnalizer.Core.Models
 {
-    internal class VibroData
+    public class VibroData
     {
         /// <summary>
         /// Массив значений амплитуды

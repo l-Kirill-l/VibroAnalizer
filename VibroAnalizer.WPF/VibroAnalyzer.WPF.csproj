@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\VibroAnalizer.Core\VibroAnalizer.Core.csproj" />
+    <ProjectReference Include="..\VibroAnalizer.Core\VibroAnalyzer.Core.csproj" />
   </ItemGroup>
 
 </Project>
