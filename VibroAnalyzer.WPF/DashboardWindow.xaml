@@ -1,0 +1,156 @@
+﻿<Window x:Class="VibroAnalyzer.WPF.DashboardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ПАКИК — Главный экран (Диспетчер комплекса)"
+        Height="700"
+        Width="750"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="15">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Заголовок -->
+            <TextBlock Grid.Row="0" Text="Программно-аппаратный комплекс изучения колебаний (ПАКИК)" 
+                       FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,15"/>
+
+            <!-- Блок 1: Общие настройки комплекса -->
+            <GroupBox Grid.Row="1" Header="1. Общие настройки комплекса и потоков" Padding="10" Margin="0,0,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Тема оформления:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                    <ComboBox x:Name="cmbTheme" Grid.Row="0" Grid.Column="1" Height="25" Margin="0,0,0,8">
+                        <ComboBoxItem Content="Светлая" IsSelected="True"/>
+                        <ComboBoxItem Content="Тёмная"/>
+                    </ComboBox>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Частота дискретизации (Гц):" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                    <ComboBox x:Name="cmbSampleRate" Grid.Row="1" Grid.Column="1" Height="25" Margin="0,0,0,8">
+                        <ComboBoxItem Content="44100" Tag="44100" IsSelected="True"/>
+                        <ComboBoxItem Content="48000" Tag="48000"/>
+                        <ComboBoxItem Content="96000" Tag="96000"/>
+                    </ComboBox>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Размер буфера (отсчетов):" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                    <ComboBox x:Name="cmbBufferSize" Grid.Row="2" Grid.Column="1" Height="25" Margin="0,0,0,8">
+                        <ComboBoxItem Content="4096" Tag="4096"/>
+                        <ComboBoxItem Content="8192" Tag="8192"/>
+                        <ComboBoxItem Content="16384" Tag="16384" IsSelected="True"/>
+                        <ComboBoxItem Content="32768" Tag="32768"/>
+                    </ComboBox>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Шаг перемотки (сек):" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                    <TextBox x:Name="txtSeekStep" Grid.Row="3" Grid.Column="1" Height="25" Text="1.0" VerticalContentAlignment="Center" Margin="0,0,0,8"/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Архитектура потоков:" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="cmbStreamStrategy" Grid.Row="4" Grid.Column="1" Height="25">
+                        <ComboBoxItem Content="Единый многоканальный поток (Multiplexing)" IsSelected="True"/>
+                        <ComboBoxItem Content="Изолированные потоки (Isolated Workers)" />
+                    </ComboBox>
+                </Grid>
+            </GroupBox>
+
+            <!-- Блок 2: Настройки Окна №1 (Магнитный датчик) -->
+            <GroupBox Grid.Row="2" Header="2. Настройки Окна анализа №1 (Магнитный датчик)" Padding="10" Margin="0,0,0,10">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="Выбор физического канала:" VerticalAlignment="Center" Width="180"/>
+                        <ComboBox x:Name="cmbChannel1" Height="25">
+                            <ComboBoxItem Content="Канал 1 (Основной)" IsSelected="True"/>
+                            <ComboBoxItem Content="Канал 2"/>
+                            <ComboBoxItem Content="Канал 3"/>
+                        </ComboBox>
+                    </DockPanel>
+                    <WrapPanel>
+                        <CheckBox x:Name="chkOsc1" Content="Осциллограмма" IsChecked="True" Margin="0,0,15,0"/>
+                        <CheckBox x:Name="chkSpec1" Content="Спектр (БПФ)" IsChecked="True" Margin="0,0,15,0"/>
+                        <CheckBox x:Name="chkWaterfall1" Content="Спектрограмма (Водопад)" IsChecked="True"/>
+                    </WrapPanel>
+                </StackPanel>
+            </GroupBox>
+
+            <!-- Блок 3: Настройки Окна №2 (Емкостной датчик) -->
+            <GroupBox Grid.Row="3" Header="3. Настройки Окна анализа №2 (Емкостной датчик)" Padding="10" Margin="0,0,0,10">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="Выбор физического канала:" VerticalAlignment="Center" Width="180"/>
+                        <ComboBox x:Name="cmbChannel2" Height="25">
+                            <ComboBoxItem Content="Канал 1"/>
+                            <ComboBoxItem Content="Канал 2 (Основной)" IsSelected="True"/>
+                            <ComboBoxItem Content="Канал 3"/>
+                        </ComboBox>
+                    </DockPanel>
+                    <WrapPanel>
+                        <CheckBox x:Name="chkOsc2" Content="Осциллограмма" IsChecked="True" Margin="0,0,15,0"/>
+                        <CheckBox x:Name="chkSpec2" Content="Спектр (БПФ)" IsChecked="True" Margin="0,0,15,0"/>
+                        <CheckBox x:Name="chkWaterfall2" Content="Спектрограмма (Водопад)" IsChecked="True"/>
+                    </WrapPanel>
+                </StackPanel>
+            </GroupBox>
+
+            <!-- Блок 4: Настройки служебных окон -->
+            <GroupBox Grid.Row="4" Header="4. Настройки служебных окон (№3 и №4)" Padding="10" Margin="0,0,0,15">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,5,0">
+                        <TextBlock Text="Окно №3 (Демодуляция):" FontWeight="Bold" Margin="0,0,0,5"/>
+                        <DockPanel Margin="0,0,0,5">
+                            <TextBlock Text="Входной канал:" VerticalAlignment="Center" Width="90"/>
+                            <ComboBox x:Name="cmbChannel3" Height="25">
+                                <ComboBoxItem Content="Канал 1"/>
+                                <ComboBoxItem Content="Канал 2"/>
+                                <ComboBoxItem Content="Канал 3 (Основной)" IsSelected="True"/>
+                            </ComboBox>
+                        </DockPanel>
+                        <TextBlock Text="Частота несущей: 20000 Гц" FontSize="11" Foreground="Gray"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                        <TextBlock Text="Окно №4 (Сырые данные / Composite):" FontWeight="Bold" Margin="0,0,0,5"/>
+                        <TextBlock Text="Отображает единый нефильтрованный поток с микрофонного входа ноутбука до разделения каналов." 
+                                   TextWrapping="Wrap" FontSize="11" Foreground="Gray"/>
+                    </StackPanel>
+                </Grid>
+            </GroupBox>
+
+            <!-- Панель запуска окон -->
+            <GroupBox Grid.Row="5" Header="Управление окнами комплекса" Padding="10" Margin="0,0,0,10">
+                <UniformGrid Columns="4" Height="35">
+                    <Button x:Name="btnOpenWindow4" Content="🎛 Окно №4 (Сырые)" Click="BtnOpenWindow4_Click" Margin="3"/>
+                    <Button x:Name="btnOpenWindow1" Content="📊 Окно №1 (Магн.)" Click="BtnOpenWindow1_Click" Margin="3"/>
+                    <Button x:Name="btnOpenWindow2" Content="📈 Окно №2 (Емк.)" Click="BtnOpenWindow2_Click" Margin="3"/>
+                    <Button x:Name="btnOpenWindow3" Content="⚙ Окно №3 (Демодул.)" Click="BtnOpenWindow3_Click" Margin="3"/>
+                </UniformGrid>
+            </GroupBox>
+
+            <!-- Статус бар -->
+            <StatusBar Grid.Row="6">
+                <StatusBarItem>
+                    <TextBlock x:Name="txtDashboardStatus" Text="Панель управления готова. Выберите конфигурацию и запустите нужные окна."/>
+                </StatusBarItem>
+            </StatusBar>
+        </Grid>
+    </ScrollViewer>
+</Window>

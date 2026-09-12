@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.37301.10
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibroAnalyzer.Core", "VibroAnalizer.Core\VibroAnalyzer.Core.csproj", "{87ADFDF3-6A71-4C94-810B-3440A16D56EB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibroAnalyzer.Core", "VibroAnalyzer.Core\VibroAnalyzer.Core.csproj", "{957A413B-961D-7F4C-14C7-158569D0BA7B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibroAnalyzer.WPF", "VibroAnalizer.WPF\VibroAnalyzer.WPF.csproj", "{912ED996-74E1-4E6D-80E6-CC781A60C821}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibroAnalyzer.WPF", "VibroAnalyzer.WPF\VibroAnalyzer.WPF.csproj", "{DA064914-9F68-428C-6B1F-A9156FDE41AF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -13,14 +13,14 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{87ADFDF3-6A71-4C94-810B-3440A16D56EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{87ADFDF3-6A71-4C94-810B-3440A16D56EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{87ADFDF3-6A71-4C94-810B-3440A16D56EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{87ADFDF3-6A71-4C94-810B-3440A16D56EB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{912ED996-74E1-4E6D-80E6-CC781A60C821}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{912ED996-74E1-4E6D-80E6-CC781A60C821}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{912ED996-74E1-4E6D-80E6-CC781A60C821}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{912ED996-74E1-4E6D-80E6-CC781A60C821}.Release|Any CPU.Build.0 = Release|Any CPU
+		{957A413B-961D-7F4C-14C7-158569D0BA7B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{957A413B-961D-7F4C-14C7-158569D0BA7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{957A413B-961D-7F4C-14C7-158569D0BA7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{957A413B-961D-7F4C-14C7-158569D0BA7B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DA064914-9F68-428C-6B1F-A9156FDE41AF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DA064914-9F68-428C-6B1F-A9156FDE41AF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DA064914-9F68-428C-6B1F-A9156FDE41AF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DA064914-9F68-428C-6B1F-A9156FDE41AF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
