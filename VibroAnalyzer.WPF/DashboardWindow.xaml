@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ПАКИК — Главный экран (Диспетчер комплекса)"
-        Height="700"
+        Height="720"
         Width="750"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanResize">
@@ -76,9 +76,10 @@
                     <DockPanel Margin="0,0,0,8">
                         <TextBlock Text="Выбор физического канала:" VerticalAlignment="Center" Width="180"/>
                         <ComboBox x:Name="cmbChannel1" Height="25">
-                            <ComboBoxItem Content="Канал 1 (Основной)" IsSelected="True"/>
-                            <ComboBoxItem Content="Канал 2"/>
-                            <ComboBoxItem Content="Канал 3"/>
+                            <ComboBoxItem Content="Канал 1 (Основной)" Tag="1" IsSelected="True"/>
+                            <ComboBoxItem Content="Канал 2" Tag="2"/>
+                            <ComboBoxItem Content="Канал 3" Tag="3"/>
+                            <ComboBoxItem Content="Встроенный микрофон (Ноутбук)" Tag="4"/>
                         </ComboBox>
                     </DockPanel>
                     <WrapPanel>
@@ -95,9 +96,10 @@
                     <DockPanel Margin="0,0,0,8">
                         <TextBlock Text="Выбор физического канала:" VerticalAlignment="Center" Width="180"/>
                         <ComboBox x:Name="cmbChannel2" Height="25">
-                            <ComboBoxItem Content="Канал 1"/>
-                            <ComboBoxItem Content="Канал 2 (Основной)" IsSelected="True"/>
-                            <ComboBoxItem Content="Канал 3"/>
+                            <ComboBoxItem Content="Канал 1" Tag="1"/>
+                            <ComboBoxItem Content="Канал 2 (Основной)" Tag="2" IsSelected="True"/>
+                            <ComboBoxItem Content="Канал 3" Tag="3"/>
+                            <ComboBoxItem Content="Встроенный микрофон (Ноутбук)" Tag="4"/>
                         </ComboBox>
                     </DockPanel>
                     <WrapPanel>
@@ -120,9 +122,10 @@
                         <DockPanel Margin="0,0,0,5">
                             <TextBlock Text="Входной канал:" VerticalAlignment="Center" Width="90"/>
                             <ComboBox x:Name="cmbChannel3" Height="25">
-                                <ComboBoxItem Content="Канал 1"/>
-                                <ComboBoxItem Content="Канал 2"/>
-                                <ComboBoxItem Content="Канал 3 (Основной)" IsSelected="True"/>
+                                <ComboBoxItem Content="Канал 1" Tag="1"/>
+                                <ComboBoxItem Content="Канал 2" Tag="2"/>
+                                <ComboBoxItem Content="Канал 3 (Основной)" Tag="3" IsSelected="True"/>
+                                <ComboBoxItem Content="Встроенный микрофон (Ноутбук)" Tag="4"/>
                             </ComboBox>
                         </DockPanel>
                         <TextBlock Text="Частота несущей: 20000 Гц" FontSize="11" Foreground="Gray"/>

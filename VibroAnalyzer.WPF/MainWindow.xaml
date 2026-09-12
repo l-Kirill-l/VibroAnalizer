@@ -70,7 +70,7 @@
             </StackPanel>
         </Grid>
 
-        <Grid>
+        <Grid x:Name="plotsGrid">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="*"/>
@@ -78,17 +78,17 @@
             </Grid.RowDefinitions>
 
             <!-- Осциллограмма (верхний график) -->
-            <GroupBox Grid.Row="0" Header="Осциллограмма" Margin="5">
+            <GroupBox x:Name="groupOscillation" Grid.Row="0" Header="Осциллограмма" Margin="5">
                 <ScottPlot:WpfPlot x:Name="wpfPlotOscilloscope"/>
             </GroupBox>
 
             <!-- Спектр (средний график) -->
-            <GroupBox Grid.Row="1" Header="Спектр (БПФ)" Margin="5">
+            <GroupBox x:Name="groupSpectrum" Grid.Row="1" Header="Спектр (БПФ)" Margin="5">
                 <ScottPlot:WpfPlot x:Name="wpfPlotSpectrum"/>
             </GroupBox>
 
             <!-- Спектрограмма (нижний график) -->
-            <GroupBox Grid.Row="2" Header="Спектрограмма (водопад)" Margin="5">
+            <GroupBox x:Name="groupWaterfall" Grid.Row="2" Header="Спектрограмма (водопад)" Margin="5">
                 <ScottPlot:WpfPlot x:Name="wpfPlotSpectrogram"/>
             </GroupBox>
         </Grid>

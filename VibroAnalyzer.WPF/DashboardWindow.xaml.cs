@@ -26,7 +26,7 @@ namespace VibroAnalyzer.WPF
         {
             if (_window4 == null || !IsWindowOpen(_window4))
             {
-                _window4 = new MainWindow(4, "Окно №4: Сырые данные (Composite)", GetSampleRate(), GetBufferSize(), GetTheme(), GetSeekStep());
+                _window4 = new MainWindow(4, "Окно №4: Сырые данные (Встроенный микрофон)", GetSampleRate(), GetBufferSize(), GetTheme(), GetSeekStep());
                 _window4.Owner = this;
                 _window4.Closed += (s, args) => _window4 = null;
                 _window4.Show();
@@ -39,13 +39,13 @@ namespace VibroAnalyzer.WPF
         {
             if (_window1 == null || !IsWindowOpen(_window1))
             {
-                int channelIndex = cmbChannel1.SelectedIndex + 1;
-                _window1 = new MainWindow(1, $"Окно №1: Магнитный датчик (Канал {channelIndex})", GetSampleRate(), GetBufferSize(), GetTheme(), GetSeekStep(),
+                string channelName = (cmbChannel1.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Канал 1";
+                _window1 = new MainWindow(1, $"Окно №1: Магнитный датчик ({channelName})", GetSampleRate(), GetBufferSize(), GetTheme(), GetSeekStep(),
                                           chkOsc1.IsChecked == true, chkSpec1.IsChecked == true, chkWaterfall1.IsChecked == true);
                 _window1.Owner = this;
                 _window1.Closed += (s, args) => _window1 = null;
                 _window1.Show();
-                txtDashboardStatus.Text = $"Открыто Окно №1 (Канал {channelIndex})";
+                txtDashboardStatus.Text = $"Открыто Окно №1 ({channelName})";
             }
             else { _window1.Activate(); }
         }
@@ -54,13 +54,13 @@ namespace VibroAnalyzer.WPF
         {
             if (_window2 == null || !IsWindowOpen(_window2))
             {
-                int channelIndex = cmbChannel2.SelectedIndex + 1;
-                _window2 = new MainWindow(2, $"Окно №2: Емкостной датчик (Канал {channelIndex})", GetSampleRate(), GetBufferSize(), GetTheme(), GetSeekStep(),
+                string channelName = (cmbChannel2.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Канал 2";
+                _window2 = new MainWindow(2, $"Окно №2: Емкостной датчик ({channelName})", GetSampleRate(), GetBufferSize(), GetTheme(), GetSeekStep(),
                                           chkOsc2.IsChecked == true, chkSpec2.IsChecked == true, chkWaterfall2.IsChecked == true);
                 _window2.Owner = this;
                 _window2.Closed += (s, args) => _window2 = null;
                 _window2.Show();
-                txtDashboardStatus.Text = $"Открыто Окно №2 (Канал {channelIndex})";
+                txtDashboardStatus.Text = $"Открыто Окно №2 ({channelName})";
             }
             else { _window2.Activate(); }
         }
@@ -69,12 +69,12 @@ namespace VibroAnalyzer.WPF
         {
             if (_window3 == null || !IsWindowOpen(_window3))
             {
-                int channelIndex = cmbChannel3.SelectedIndex + 1;
-                _window3 = new MainWindow(3, $"Окно №3: Несущая и демодуляция (Канал {channelIndex})", GetSampleRate(), GetBufferSize(), GetTheme(), GetSeekStep());
+                string channelName = (cmbChannel3.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Канал 3";
+                _window3 = new MainWindow(3, $"Окно №3: Несущая и демодуляция ({channelName})", GetSampleRate(), GetBufferSize(), GetTheme(), GetSeekStep());
                 _window3.Owner = this;
                 _window3.Closed += (s, args) => _window3 = null;
                 _window3.Show();
-                txtDashboardStatus.Text = $"Открыто Окно №3 (Канал {channelIndex})";
+                txtDashboardStatus.Text = $"Открыто Окно №3 ({channelName})";
             }
             else { _window3.Activate(); }
         }
