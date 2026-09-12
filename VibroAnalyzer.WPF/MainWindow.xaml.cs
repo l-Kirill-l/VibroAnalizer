@@ -1,6 +1,8 @@
 ﻿using NAudio.Wave;
 using ScottPlot;
 using ScottPlot.Colormaps;
+using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -29,7 +31,11 @@ namespace VibroAnalyzer.WPF
         private int _spectrogramHistoryLength = 100;
         private bool _isSeeking = false;
 
-        // Для воспроизведения - ПОЛЯ КЛАССА
+        // Буфер для трека огибающей / RMS
+        private readonly List<double> _rmsHistory = new List<double>();
+        private const int MaxRmsHistoryLength = 300;
+
+        // Воспроизведение
         private NAudio.Wave.WaveOutEvent _waveOut;
         private NAudio.Wave.RawSourceWaveStream _rawStream;
         private System.IO.MemoryStream _memoryStream;
@@ -45,18 +51,31 @@ namespace VibroAnalyzer.WPF
         private System.Windows.Threading.DispatcherTimer _seekRepeatTimer;
         private double _seekRepeatDirection = 0;
 
-        // Настройки (реально применяются и сохраняются)
+        // Настройки
         private int _currentSampleRate = 44100;
         private int _currentBufferSize = 16384;
         private string _currentTheme = "Светлая";
         private double _currentSeekStep = 1.0;
 
-        // Новые свойства для интеграции с ГЭ и видимостью графиков
+        // Выбор и масштабирование высоты активного графика
+        private GroupBox _selectedChartGroup = null;
+        private const double DefaultChartHeight = 260.0;
+        private const double MinChartHeight = 160.0;
+        private const double MaxChartHeight = 1200.0;
+
+        // Параметры активации инструментов анализа
         public int WindowId { get; private set; } = 1;
         public string WindowTitleText { get; private set; } = "Окно анализа ПАКИК";
         public bool ShowOscillation { get; private set; } = true;
         public bool ShowSpectrum { get; private set; } = true;
         public bool ShowWaterfall { get; private set; } = true;
+        public bool ShowEnvelope { get; private set; } = true;
+        public bool ShowPsd { get; private set; } = true;
+        public bool ShowAcf { get; private set; } = false;
+        public bool ShowOctave { get; private set; } = false;
+        public bool ShowCepstrum { get; private set; } = false;
+        public bool ShowCwt { get; private set; } = false;
+        public bool ShowPhase { get; private set; } = false;
 
         private static readonly int[] AllowedSampleRates = { 44100, 48000, 96000 };
         private static readonly int[] AllowedBufferSizes = { 4096, 8192, 16384, 32768 };
@@ -64,6 +83,8 @@ namespace VibroAnalyzer.WPF
         public MainWindow()
         {
             InitializeComponent();
+
+            MaxHeight = SystemParameters.WorkArea.Height;
 
             LoadSettings();
 
@@ -76,16 +97,33 @@ namespace VibroAnalyzer.WPF
             _recordingTimer = new System.Windows.Threading.DispatcherTimer();
             _recordingTimer.Interval = TimeSpan.FromMilliseconds(100);
             _recordingTimer.Tick += RecordingTimer_Tick;
+
             InitializeOscilloscope();
             InitializeSpectrum();
             InitializeSpectrogramWaterfall();
+            InitializeEnvelopePlot();
+            InitializePsdPlot();
+            InitializeAcfPlot();
+            InitializeOctavePlot();
+            InitializeCepstrumPlot();
+            InitializeCwtPlot();
+            InitializePhasePlot();
+
+            DisablePlotInternalInteractions();
+
+            // Перехват колесика на ScrollViewer для предотвращения сдвига экрана
+            if (plotsScrollViewer != null)
+            {
+                plotsScrollViewer.PreviewMouseWheel += PlotsScrollViewer_PreviewMouseWheel;
+            }
 
             ApplyTheme(_currentTheme);
         }
 
-        // Конструктор с поддержкой параметров из Главного экрана (ГЭ)
         public MainWindow(int windowId, string windowTitle, int sampleRate, int bufferSize, string theme, double seekStep,
-                          bool showOsc = true, bool showSpec = true, bool showWaterfall = true) : this()
+                          bool showOsc = true, bool showSpec = true, bool showWaterfall = true,
+                          bool showEnv = true, bool showPsd = true, bool showAcf = false,
+                          bool showOctave = false, bool showCepstrum = false, bool showCwt = false, bool showPhase = false) : this()
         {
             WindowId = windowId;
             WindowTitleText = windowTitle;
@@ -98,33 +136,200 @@ namespace VibroAnalyzer.WPF
             ShowOscillation = showOsc;
             ShowSpectrum = showSpec;
             ShowWaterfall = showWaterfall;
+            ShowEnvelope = showEnv;
+            ShowPsd = showPsd;
+            ShowAcf = showAcf;
+            ShowOctave = showOctave;
+            ShowCepstrum = showCepstrum;
+            ShowCwt = showCwt;
+            ShowPhase = showPhase;
 
-            // Пересоздаем захват под пришедшую с ГЭ частоту и буфер
             RecreateAudioCapture();
             ApplyTheme(_currentTheme);
             ApplyConfigurationToUI();
         }
 
-        private void ApplyConfigurationToUI()
+        private IEnumerable<ScottPlot.WPF.WpfPlot> GetAllPlots()
         {
-            if (groupOscillation != null)
-                groupOscillation.Visibility = ShowOscillation ? Visibility.Visible : Visibility.Collapsed;
+            yield return wpfPlotOscilloscope;
+            yield return wpfPlotSpectrum;
+            yield return wpfPlotSpectrogram;
+            yield return wpfPlotEnvelope;
+            yield return wpfPlotPsd;
+            yield return wpfPlotAcf;
+            yield return wpfPlotOctave;
+            yield return wpfPlotCepstrum;
+            yield return wpfPlotCwt;
+            yield return wpfPlotPhase;
+        }
 
-            if (groupSpectrum != null)
-                groupSpectrum.Visibility = ShowSpectrum ? Visibility.Visible : Visibility.Collapsed;
+        private ScottPlot.WPF.WpfPlot GetPlotFromGroupBox(GroupBox group)
+        {
+            if (group == null) return null;
+            return group.Content as ScottPlot.WPF.WpfPlot;
+        }
 
-            if (groupWaterfall != null)
-                groupWaterfall.Visibility = ShowWaterfall ? Visibility.Visible : Visibility.Collapsed;
-
-            if (plotsGrid != null && plotsGrid.RowDefinitions.Count >= 3)
+        private void DisablePlotInternalInteractions()
+        {
+            foreach (var plot in GetAllPlots())
             {
-                plotsGrid.RowDefinitions[0].Height = ShowOscillation ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-                plotsGrid.RowDefinitions[1].Height = ShowSpectrum ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-                plotsGrid.RowDefinitions[2].Height = ShowWaterfall ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+                if (plot != null)
+                {
+                    plot.UserInputProcessor.Disable();
+                }
             }
         }
 
-        // ===== НАСТРОЙКИ: ХРАНЕНИЕ =====
+        private void ApplyConfigurationToUI()
+        {
+            if (groupOscillation != null) groupOscillation.Visibility = ShowOscillation ? Visibility.Visible : Visibility.Collapsed;
+            if (groupSpectrum != null) groupSpectrum.Visibility = ShowSpectrum ? Visibility.Visible : Visibility.Collapsed;
+            if (groupWaterfall != null) groupWaterfall.Visibility = ShowWaterfall ? Visibility.Visible : Visibility.Collapsed;
+            if (groupEnvelope != null) groupEnvelope.Visibility = ShowEnvelope ? Visibility.Visible : Visibility.Collapsed;
+            if (groupPsd != null) groupPsd.Visibility = ShowPsd ? Visibility.Visible : Visibility.Collapsed;
+            if (groupAcf != null) groupAcf.Visibility = ShowAcf ? Visibility.Visible : Visibility.Collapsed;
+            if (groupOctave != null) groupOctave.Visibility = ShowOctave ? Visibility.Visible : Visibility.Collapsed;
+            if (groupCepstrum != null) groupCepstrum.Visibility = ShowCepstrum ? Visibility.Visible : Visibility.Collapsed;
+            if (groupCwt != null) groupCwt.Visibility = ShowCwt ? Visibility.Visible : Visibility.Collapsed;
+            if (groupPhase != null) groupPhase.Visibility = ShowPhase ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // ===== РАЗДЕЛЕНИЕ СКРОЛЛА И ВЫБОР ИНСТРУМЕНТА =====
+
+        private void ChartHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border border && border.Parent is GroupBox groupBox)
+            {
+                if (e.ClickCount == 2)
+                {
+                    groupBox.Height = DefaultChartHeight;
+                    txtStatus.Text = $"Высота графика сброшена до {DefaultChartHeight}px";
+                    e.Handled = true;
+                    return;
+                }
+
+                if (_selectedChartGroup == groupBox)
+                {
+                    DeselectChart();
+                }
+                else
+                {
+                    SelectChart(groupBox);
+                }
+                e.Handled = true;
+            }
+        }
+
+        private void SelectChart(GroupBox group)
+        {
+            DeselectChart();
+
+            _selectedChartGroup = group;
+
+            if (_selectedChartGroup != null)
+            {
+                if (_selectedChartGroup.Header is Border newBorder)
+                {
+                    newBorder.BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 122, 204));
+                    newBorder.BorderThickness = new Thickness(2);
+                    newBorder.CornerRadius = new CornerRadius(3);
+                }
+
+                // Включаем взаимодействие для выбранного графика, чтобы работало перетаскивание (Pan) правой кнопкой мыши
+                var activePlot = GetPlotFromGroupBox(_selectedChartGroup);
+                if (activePlot != null)
+                {
+                    activePlot.UserInputProcessor.Enable();
+                }
+
+                txtStatus.Text = "Выбран инструмент. ПКМ (зажать): перемещение | Колесико: зум X | Shift + колесико: зум Y | Ctrl + колесико: высота.";
+            }
+        }
+
+        private void DeselectChart()
+        {
+            if (_selectedChartGroup != null)
+            {
+                if (_selectedChartGroup.Header is Border oldBorder)
+                {
+                    oldBorder.BorderBrush = null;
+                    oldBorder.BorderThickness = new Thickness(0);
+                }
+
+                // Отключаем взаимодействие, чтобы деактивированный график не сдвигался
+                var activePlot = GetPlotFromGroupBox(_selectedChartGroup);
+                if (activePlot != null)
+                {
+                    activePlot.UserInputProcessor.Disable();
+                }
+
+                _selectedChartGroup = null;
+                txtStatus.Text = "Инструмент снят с выбора. Прокрутка окна активна.";
+            }
+        }
+
+        private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (_selectedChartGroup == null) return;
+
+            DependencyObject dep = e.OriginalSource as DependencyObject;
+            while (dep != null)
+            {
+                if (dep == _selectedChartGroup) return;
+                dep = VisualTreeHelper.GetParent(dep);
+            }
+
+            DeselectChart();
+        }
+
+        // Управление зумом по осям X и Y, а также высотой карточки
+        private void PlotsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (_selectedChartGroup != null)
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+                {
+                    // Изменение высоты карточки графика
+                    double delta = e.Delta > 0 ? 40.0 : -40.0;
+                    ChangeSelectedChartHeight(delta);
+                }
+                else
+                {
+                    var activePlot = GetPlotFromGroupBox(_selectedChartGroup);
+                    if (activePlot != null)
+                    {
+                        double zoomRatio = e.Delta > 0 ? 1.15 : 0.85;
+
+                        // Если зажат Shift — зум только по оси Y
+                        if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                        {
+                            activePlot.Plot.Axes.Zoom(1.0, zoomRatio);
+                        }
+                        // По умолчанию (без Shift) — зум только по оси X
+                        else
+                        {
+                            activePlot.Plot.Axes.Zoom(zoomRatio, 1.0);
+                        }
+
+                        activePlot.Refresh();
+                    }
+                }
+
+                // Гарантированно глушим событие, чтобы страница не сдвигалась
+                e.Handled = true;
+            }
+        }
+
+        private void ChangeSelectedChartHeight(double delta)
+        {
+            if (_selectedChartGroup == null) return;
+            double currentHeight = double.IsNaN(_selectedChartGroup.Height) ? DefaultChartHeight : _selectedChartGroup.Height;
+            double newHeight = Math.Max(MinChartHeight, Math.Min(MaxChartHeight, currentHeight + delta));
+            _selectedChartGroup.Height = newHeight;
+            txtStatus.Text = $"Высота графика: {newHeight:F0}px";
+        }
+
+        // ===== НАСТРОЙКИ =====
 
         private static string SettingsFilePath =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -182,8 +387,6 @@ namespace VibroAnalyzer.WPF
             catch { }
         }
 
-        // ===== НАСТРОЙКИ: ПРИМЕНЕНИЕ =====
-
         private void RecreateAudioCapture()
         {
             bool wasRecording = _isRecording;
@@ -208,11 +411,9 @@ namespace VibroAnalyzer.WPF
             var settingsWindow = new SettingsWindow(_currentSampleRate, _currentBufferSize,
                                                     _currentTheme, _currentSeekStep);
             settingsWindow.Owner = this;
-
             ApplyThemeRecursive(settingsWindow, _currentTheme == "Тёмная");
 
-            bool? result = settingsWindow.ShowDialog();
-            if (result == true)
+            if (settingsWindow.ShowDialog() == true)
             {
                 _currentSampleRate = settingsWindow.SelectedSampleRate;
                 _currentBufferSize = settingsWindow.SelectedBufferSize;
@@ -237,6 +438,13 @@ namespace VibroAnalyzer.WPF
             StylePlot(wpfPlotOscilloscope, dark);
             StylePlot(wpfPlotSpectrum, dark);
             StylePlot(wpfPlotSpectrogram, dark);
+            StylePlot(wpfPlotEnvelope, dark);
+            StylePlot(wpfPlotPsd, dark);
+            StylePlot(wpfPlotAcf, dark);
+            StylePlot(wpfPlotOctave, dark);
+            StylePlot(wpfPlotCepstrum, dark);
+            StylePlot(wpfPlotCwt, dark);
+            StylePlot(wpfPlotPhase, dark);
         }
 
         private void ApplyThemeRecursive(DependencyObject element, bool dark)
@@ -281,10 +489,10 @@ namespace VibroAnalyzer.WPF
 
         private void StylePlot(ScottPlot.WPF.WpfPlot wpfPlot, bool dark)
         {
+            if (wpfPlot == null) return;
             try
             {
                 var plot = wpfPlot.Plot;
-
                 wpfPlot.Background = new SolidColorBrush(dark
                     ? System.Windows.Media.Color.FromRgb(30, 30, 30)
                     : System.Windows.Media.Color.FromRgb(255, 255, 255));
@@ -294,18 +502,13 @@ namespace VibroAnalyzer.WPF
                 var fg = ScottPlot.Color.FromHex(dark ? "#e0e0e0" : "#16161a");
 
                 bool applied = ApplyPlotStyleViaGetSetStyle(plot, figureBg, dataBg);
-
                 if (applied)
                 {
                     plot.Axes.Color(fg);
                 }
-
                 wpfPlot.Refresh();
             }
-            catch
-            {
-                // не критично
-            }
+            catch { }
         }
 
         private static bool ApplyPlotStyleViaGetSetStyle(ScottPlot.Plot plot, ScottPlot.Color figure, ScottPlot.Color data)
@@ -332,16 +535,10 @@ namespace VibroAnalyzer.WPF
                     applied |= TrySetColorProp(styleObj, p.Name, isData ? data : figure);
                 }
 
-                if (applied)
-                {
-                    setStyle.Invoke(plot, new[] { styleObj });
-                }
+                if (applied) setStyle.Invoke(plot, new[] { styleObj });
                 return applied;
             }
-            catch
-            {
-                return false;
-            }
+            catch { return false; }
         }
 
         private static bool TrySetColorProp(object target, string propName, ScottPlot.Color color)
@@ -358,13 +555,10 @@ namespace VibroAnalyzer.WPF
                 }
                 return false;
             }
-            catch
-            {
-                return false;
-            }
+            catch { return false; }
         }
 
-        // ===== ГРАФИКИ =====
+        // ===== ИНИЦИАЛИЗАЦИЯ ГРАФИКОВ =====
 
         private void InitializeOscilloscope()
         {
@@ -394,14 +588,88 @@ namespace VibroAnalyzer.WPF
             RenderSpectrogram();
             wpfPlotSpectrogram.Plot.Title("Спектрограмма");
             wpfPlotSpectrogram.Plot.XLabel("Частота (Гц)");
-            wpfPlotSpectrogram.Plot.YLabel("Время");
+            wpfPlotSpectrogram.Plot.YLabel("История времени");
             wpfPlotSpectrogram.Refresh();
         }
 
+        private void InitializeEnvelopePlot()
+        {
+            wpfPlotEnvelope.Plot.Clear();
+            wpfPlotEnvelope.Plot.Add.Scatter(new double[0], new double[0]);
+            wpfPlotEnvelope.Plot.Title("Огибающая / RMS во времени");
+            wpfPlotEnvelope.Plot.XLabel("Шаг буфера");
+            wpfPlotEnvelope.Plot.YLabel("RMS");
+            wpfPlotEnvelope.Plot.Axes.SetLimits(0, MaxRmsHistoryLength, 0, 1.0);
+            wpfPlotEnvelope.Refresh();
+        }
+
+        private void InitializePsdPlot()
+        {
+            wpfPlotPsd.Plot.Clear();
+            wpfPlotPsd.Plot.Add.Scatter(new double[0], new double[0]);
+            wpfPlotPsd.Plot.Title("Спектральная плотность мощности (PSD)");
+            wpfPlotPsd.Plot.XLabel("Частота (Гц)");
+            wpfPlotPsd.Plot.YLabel("Мощность (дБ)");
+            wpfPlotPsd.Plot.Axes.SetLimits(0, 25000, -100, 10);
+            wpfPlotPsd.Refresh();
+        }
+
+        private void InitializeAcfPlot()
+        {
+            wpfPlotAcf.Plot.Clear();
+            wpfPlotAcf.Plot.Add.Scatter(new double[0], new double[0]);
+            wpfPlotAcf.Plot.Title("Автокорреляционная функция (АКФ)");
+            wpfPlotAcf.Plot.XLabel("Лаг (отсчеты)");
+            wpfPlotAcf.Plot.YLabel("Корреляция");
+            wpfPlotAcf.Plot.Axes.SetLimits(0, 500, -1.0, 1.0);
+            wpfPlotAcf.Refresh();
+        }
+
+        private void InitializeOctavePlot()
+        {
+            wpfPlotOctave.Plot.Clear();
+            wpfPlotOctave.Plot.Add.Scatter(new double[0], new double[0]);
+            wpfPlotOctave.Plot.Title("Октавный спектр (1/3 октавы)");
+            wpfPlotOctave.Plot.XLabel("Полоса частот");
+            wpfPlotOctave.Plot.YLabel("Энергия полосы (дБ)");
+            wpfPlotOctave.Refresh();
+        }
+
+        private void InitializeCepstrumPlot()
+        {
+            wpfPlotCepstrum.Plot.Clear();
+            wpfPlotCepstrum.Plot.Add.Scatter(new double[0], new double[0]);
+            wpfPlotCepstrum.Plot.Title("Вещественный кепстр (Real Cepstrum)");
+            wpfPlotCepstrum.Plot.XLabel("Квефренция (мс)");
+            wpfPlotCepstrum.Plot.YLabel("Амплитуда кепстра");
+            wpfPlotCepstrum.Refresh();
+        }
+
+        private void InitializeCwtPlot()
+        {
+            wpfPlotCwt.Plot.Clear();
+            wpfPlotCwt.Plot.Title("Вейвлет-анализ (CWT Скалограмма)");
+            wpfPlotCwt.Plot.XLabel("Время");
+            wpfPlotCwt.Plot.YLabel("Масштаб");
+            wpfPlotCwt.Refresh();
+        }
+
+        private void InitializePhasePlot()
+        {
+            wpfPlotPhase.Plot.Clear();
+            wpfPlotPhase.Plot.Add.Scatter(new double[0], new double[0]);
+            wpfPlotPhase.Plot.Title("Фазовый портрет x(t) vs x(t - τ)");
+            wpfPlotPhase.Plot.XLabel("x(t)");
+            wpfPlotPhase.Plot.YLabel("x(t - τ)");
+            wpfPlotPhase.Plot.Axes.SetLimits(-1.1, 1.1, -1.1, 1.1);
+            wpfPlotPhase.Refresh();
+        }
+
+        // ===== ОБНОВЛЕНИЕ ГРАФИКОВ =====
+
         private void UpdateSpectrogramWaterfall(double[] spectrum, int sampleRate)
         {
-            if (_spectrogramData == null || spectrum == null || spectrum.Length == 0 || !ShowWaterfall)
-                return;
+            if (_spectrogramData == null || spectrum == null || spectrum.Length == 0 || !ShowWaterfall) return;
 
             for (int y = _spectrogramHistoryLength - 1; y > 0; y--)
             {
@@ -434,41 +702,6 @@ namespace VibroAnalyzer.WPF
             }
         }
 
-        private void RebuildSpectrogramAtPosition(int centerPosition, double[] samples, int sampleRate)
-        {
-            if (_spectrogramData == null || samples == null || samples.Length == 0 || !ShowWaterfall)
-                return;
-
-            int cols = _spectrogramData.GetLength(1);
-            int windowSize = 1000;
-            int samplesPerRow = sampleRate / 10;
-
-            for (int y = 0; y < _spectrogramHistoryLength; y++)
-            {
-                int center = centerPosition - y * samplesPerRow;
-                if (center < 0)
-                {
-                    for (int x = 0; x < cols; x++) _spectrogramData[y, x] = 0;
-                    continue;
-                }
-
-                int startIndex = Math.Max(0, center - windowSize / 2);
-                int endIndex = Math.Min(samples.Length, startIndex + windowSize);
-                if (endIndex <= startIndex)
-                {
-                    for (int x = 0; x < cols; x++) _spectrogramData[y, x] = 0;
-                    continue;
-                }
-
-                double[] windowSamples = new double[endIndex - startIndex];
-                Array.Copy(samples, startIndex, windowSamples, 0, windowSamples.Length);
-                double[] spectrum = _signalProcessor.CalculateFFT(windowSamples);
-                FillSpectrogramRow(y, spectrum, sampleRate);
-            }
-
-            RenderSpectrogram();
-        }
-
         private void RenderSpectrogram()
         {
             if (!ShowWaterfall) return;
@@ -476,7 +709,6 @@ namespace VibroAnalyzer.WPF
             var heatmap = wpfPlotSpectrogram.Plot.Add.Heatmap(_spectrogramData);
             heatmap.Colormap = new ScottPlot.Colormaps.Turbo();
             heatmap.Extent = new ScottPlot.CoordinateRect(0, 25000, 0, _spectrogramHistoryLength);
-            wpfPlotSpectrogram.Plot.Axes.SetLimits(0, 25000, 0, _spectrogramHistoryLength);
             wpfPlotSpectrogram.Refresh();
         }
 
@@ -487,46 +719,215 @@ namespace VibroAnalyzer.WPF
             double[] displaySamples = new double[displayCount];
             Array.Copy(samples, samples.Length - displayCount, displaySamples, 0, displayCount);
             double[] time = new double[displayCount];
-            for (int i = 0; i < displayCount; i++)
-            {
-                time[i] = i;
-            }
+            for (int i = 0; i < displayCount; i++) time[i] = i;
+
             wpfPlotOscilloscope.Plot.Clear();
             wpfPlotOscilloscope.Plot.Add.Scatter(time, displaySamples);
             wpfPlotOscilloscope.Refresh();
         }
 
-        private void UpdateSpectrum(double[] samples, int sampleRate)
-        {
-            if (samples == null || samples.Length == 0 || !ShowSpectrum)
-                return;
-            double[] spectrum = _signalProcessor.CalculateFFT(samples);
-            UpdateSpectrumFromFFT(samples, spectrum, sampleRate);
-        }
-
         private void UpdateSpectrumFromFFT(double[] samples, double[] spectrum, int sampleRate)
         {
-            if (samples == null || samples.Length == 0 || spectrum == null || spectrum.Length == 0 || !ShowSpectrum)
-                return;
+            if (samples == null || samples.Length == 0 || spectrum == null || spectrum.Length == 0 || !ShowSpectrum) return;
             double[] frequencies = _signalProcessor.GetFrequencies(spectrum.Length, sampleRate);
-            if (frequencies == null || frequencies.Length == 0)
-                return;
+            if (frequencies == null || frequencies.Length == 0) return;
+
             double peakFreq = _signalProcessor.FindPeakFrequency(spectrum, frequencies);
             double rms = _signalProcessor.CalculateRMS(samples);
-            var currentLimits = wpfPlotSpectrum.Plot.Axes.GetLimits();
-            double xMin = currentLimits.Left;
-            double xMax = currentLimits.Right;
-            if (xMin == xMax || double.IsInfinity(xMin) || double.IsNaN(xMin))
-            {
-                xMin = 0;
-                xMax = 25000;
-            }
+
             wpfPlotSpectrum.Plot.Clear();
             wpfPlotSpectrum.Plot.Add.Scatter(frequencies, spectrum);
-            wpfPlotSpectrum.Plot.Axes.SetLimitsX(xMin, xMax);
             wpfPlotSpectrum.Refresh();
             txtFrequency.Text = $"Частота: {peakFreq:F1} Гц";
             txtRMS.Text = $"RMS: {rms:F4}";
+        }
+
+        private void UpdateEnvelope(double rms)
+        {
+            if (!ShowEnvelope) return;
+            _rmsHistory.Add(rms);
+            if (_rmsHistory.Count > MaxRmsHistoryLength) _rmsHistory.RemoveAt(0);
+
+            double[] xs = new double[_rmsHistory.Count];
+            double[] ys = _rmsHistory.ToArray();
+            for (int i = 0; i < xs.Length; i++) xs[i] = i;
+
+            wpfPlotEnvelope.Plot.Clear();
+            wpfPlotEnvelope.Plot.Add.Scatter(xs, ys);
+            wpfPlotEnvelope.Refresh();
+        }
+
+        private void UpdatePsd(double[] spectrum, int sampleRate)
+        {
+            if (!ShowPsd || spectrum == null || spectrum.Length == 0) return;
+            double[] frequencies = _signalProcessor.GetFrequencies(spectrum.Length, sampleRate);
+            double[] psdDb = new double[spectrum.Length];
+
+            for (int i = 0; i < spectrum.Length; i++)
+            {
+                double p = Math.Max(1e-12, spectrum[i] * spectrum[i]);
+                psdDb[i] = 10.0 * Math.Log10(p);
+            }
+
+            wpfPlotPsd.Plot.Clear();
+            wpfPlotPsd.Plot.Add.Scatter(frequencies, psdDb);
+            wpfPlotPsd.Refresh();
+        }
+
+        private void UpdateAcf(double[] samples)
+        {
+            if (!ShowAcf || samples == null || samples.Length == 0) return;
+            int maxLag = Math.Min(500, samples.Length / 2);
+            double[] lags = new double[maxLag];
+            double[] r = new double[maxLag];
+
+            double mean = samples.Average();
+            double c0 = 0;
+            for (int i = 0; i < samples.Length; i++) c0 += (samples[i] - mean) * (samples[i] - mean);
+
+            for (int k = 0; k < maxLag; k++)
+            {
+                lags[k] = k;
+                if (c0 <= 1e-15) { r[k] = 0; continue; }
+                double ck = 0;
+                for (int i = 0; i < samples.Length - k; i++)
+                {
+                    ck += (samples[i] - mean) * (samples[i + k] - mean);
+                }
+                r[k] = ck / c0;
+            }
+
+            wpfPlotAcf.Plot.Clear();
+            wpfPlotAcf.Plot.Add.Scatter(lags, r);
+            wpfPlotAcf.Refresh();
+        }
+
+        private void UpdateOctave(double[] spectrum, int sampleRate)
+        {
+            if (!ShowOctave || spectrum == null || spectrum.Length == 0) return;
+            double[] centerFreqs = { 31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
+            double[] bandEnergies = new double[centerFreqs.Length];
+            double freqStep = (sampleRate / 2.0) / spectrum.Length;
+
+            for (int b = 0; b < centerFreqs.Length; b++)
+            {
+                double fLow = centerFreqs[b] / Math.Sqrt(2);
+                double fHigh = centerFreqs[b] * Math.Sqrt(2);
+                int idxLow = (int)(fLow / freqStep);
+                int idxHigh = Math.Min(spectrum.Length - 1, (int)(fHigh / freqStep));
+
+                double sum = 0;
+                for (int i = idxLow; i <= idxHigh; i++) sum += spectrum[i] * spectrum[i];
+                bandEnergies[b] = 10.0 * Math.Log10(Math.Max(1e-12, sum));
+            }
+
+            double[] xs = new double[centerFreqs.Length];
+            for (int i = 0; i < xs.Length; i++) xs[i] = i;
+
+            wpfPlotOctave.Plot.Clear();
+            wpfPlotOctave.Plot.Add.Scatter(xs, bandEnergies);
+            wpfPlotOctave.Refresh();
+        }
+
+        private void UpdateCepstrum(double[] spectrum, int sampleRate)
+        {
+            if (!ShowCepstrum || spectrum == null || spectrum.Length == 0) return;
+            double[] logMag = new double[spectrum.Length];
+            for (int i = 0; i < spectrum.Length; i++) logMag[i] = Math.Log(Math.Max(1e-9, spectrum[i]));
+
+            double[] cepstrum = _signalProcessor.CalculateFFT(logMag);
+            int displayCount = Math.Min(300, cepstrum.Length);
+            double[] quefrencyMs = new double[displayCount];
+            double[] vals = new double[displayCount];
+
+            for (int i = 0; i < displayCount; i++)
+            {
+                quefrencyMs[i] = (i / (double)sampleRate) * 1000.0;
+                vals[i] = cepstrum[i];
+            }
+
+            wpfPlotCepstrum.Plot.Clear();
+            wpfPlotCepstrum.Plot.Add.Scatter(quefrencyMs, vals);
+            wpfPlotCepstrum.Refresh();
+        }
+
+        private void UpdateCwt(double[] samples)
+        {
+            if (!ShowCwt || samples == null || samples.Length == 0) return;
+            int n = Math.Min(128, samples.Length);
+            int scales = 20;
+            double[,] cwtData = new double[scales, n];
+
+            for (int s = 1; s <= scales; s++)
+            {
+                double width = s * 2.0;
+                for (int i = 0; i < n; i++)
+                {
+                    double sum = 0;
+                    for (int k = -10; k <= 10; k++)
+                    {
+                        int idx = i + k;
+                        if (idx >= 0 && idx < n)
+                        {
+                            double t = k / width;
+                            double ricker = (1.0 - t * t) * Math.Exp(-0.5 * t * t);
+                            sum += samples[idx] * ricker;
+                        }
+                    }
+                    cwtData[s - 1, i] = Math.Abs(sum);
+                }
+            }
+
+            wpfPlotCwt.Plot.Clear();
+            var hm = wpfPlotCwt.Plot.Add.Heatmap(cwtData);
+            hm.Colormap = new ScottPlot.Colormaps.Turbo();
+            wpfPlotCwt.Refresh();
+        }
+
+        private void UpdatePhase(double[] samples)
+        {
+            if (!ShowPhase || samples == null || samples.Length < 100) return;
+            int tau = 10;
+            int count = Math.Min(500, samples.Length - tau);
+            double[] x = new double[count];
+            double[] y = new double[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                x[i] = samples[i];
+                y[i] = samples[i + tau];
+            }
+
+            wpfPlotPhase.Plot.Clear();
+            wpfPlotPhase.Plot.Add.Scatter(x, y);
+            wpfPlotPhase.Refresh();
+        }
+
+        private void CalculateAndDisplayStats(double[] samples)
+        {
+            if (samples == null || samples.Length == 0) return;
+            double mean = samples.Average();
+            double variance = 0;
+            double fourthMoment = 0;
+            double maxAbs = 0;
+
+            for (int i = 0; i < samples.Length; i++)
+            {
+                double diff = samples[i] - mean;
+                variance += diff * diff;
+                fourthMoment += diff * diff * diff * diff;
+                double abs = Math.Abs(samples[i]);
+                if (abs > maxAbs) maxAbs = abs;
+            }
+
+            variance /= samples.Length;
+            double stdDev = Math.Sqrt(variance);
+            fourthMoment /= samples.Length;
+
+            double crestFactor = stdDev > 1e-9 ? (maxAbs / stdDev) : 0;
+            double kurtosis = (variance > 1e-9) ? (fourthMoment / (variance * variance)) - 3.0 : 0;
+
+            txtStats.Text = $"Пик-фактор: {crestFactor:F2} | Эксцесс (Kurtosis): {kurtosis:F2}";
         }
 
         private void OnDataAvailable(VibroData data)
@@ -548,18 +949,26 @@ namespace VibroAnalyzer.WPF
                 Dispatcher.Invoke(() =>
                 {
                     if (ShowOscillation) UpdateOscilloscope(data.Samples);
-                    if (ShowSpectrum || ShowWaterfall)
+                    double rms = _signalProcessor.CalculateRMS(data.Samples);
+                    if (ShowEnvelope) UpdateEnvelope(rms);
+                    CalculateAndDisplayStats(data.Samples);
+
+                    if (ShowSpectrum || ShowWaterfall || ShowPsd || ShowOctave || ShowCepstrum)
                     {
                         double[] spectrum = _signalProcessor.CalculateFFT(data.Samples);
                         if (ShowSpectrum) UpdateSpectrumFromFFT(data.Samples, spectrum, data.SampleRate);
                         if (ShowWaterfall) UpdateSpectrogramWaterfall(spectrum, data.SampleRate);
+                        if (ShowPsd) UpdatePsd(spectrum, data.SampleRate);
+                        if (ShowOctave) UpdateOctave(spectrum, data.SampleRate);
+                        if (ShowCepstrum) UpdateCepstrum(spectrum, data.SampleRate);
                     }
+
+                    if (ShowAcf) UpdateAcf(data.Samples);
+                    if (ShowCwt) UpdateCwt(data.Samples);
+                    if (ShowPhase) UpdatePhase(data.Samples);
                 });
             }
-            catch
-            {
-                // окно закрывается
-            }
+            catch { }
         }
 
         // ===== ВОСПРОИЗВЕДЕНИЕ =====
@@ -586,10 +995,7 @@ namespace VibroAnalyzer.WPF
             if (_isRecordingMode)
             {
                 _audioCapture.Start();
-                lock (_recordingLock)
-                {
-                    _recordingBuffer.Clear();
-                }
+                lock (_recordingLock) { _recordingBuffer.Clear(); }
                 ClearSpectrogramHistory();
                 _isRecording = true;
                 _recordingDuration = TimeSpan.Zero;
@@ -600,10 +1006,7 @@ namespace VibroAnalyzer.WPF
                 btnSave.IsEnabled = false;
                 txtStatus.Text = "Запись... 00:00:00";
             }
-            else
-            {
-                BtnPlay_Click(sender, e);
-            }
+            else { BtnPlay_Click(sender, e); }
         }
 
         private void BtnStop_Click(object sender, RoutedEventArgs e)
@@ -663,10 +1066,7 @@ namespace VibroAnalyzer.WPF
                     double totalSeconds = _loadedSamples.Length / (double)_loadedSampleRate;
                     txtStatus.Text = $"Воспроизведение... {FormatTime(totalSeconds)}";
                 }
-                else
-                {
-                    BtnPlay_Click(sender, e);
-                }
+                else { BtnPlay_Click(sender, e); }
             }
         }
 
@@ -675,10 +1075,7 @@ namespace VibroAnalyzer.WPF
             _isRecordingMode = true;
             StopSeekRepeat();
             StopPlaybackInternal();
-            lock (_recordingLock)
-            {
-                _recordingBuffer.Clear();
-            }
+            lock (_recordingLock) { _recordingBuffer.Clear(); }
             ClearSpectrogramHistory();
             _recordingDuration = TimeSpan.Zero;
             _playbackPosition = 0;
@@ -696,22 +1093,19 @@ namespace VibroAnalyzer.WPF
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
             short[] copy;
-            lock (_recordingLock)
-            {
-                copy = _recordingBuffer.ToArray();
-            }
+            lock (_recordingLock) { copy = _recordingBuffer.ToArray(); }
             if (copy == null || copy.Length == 0)
             {
-                MessageBox.Show("Нет данных для сохранения. Сначала сделайте запись.",
-                              "Внимание", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Нет данных для сохранения.", "Внимание", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            var saveDialog = new Microsoft.Win32.SaveFileDialog();
-            saveDialog.Filter = "WAV файлы (*.wav)|*.wav";
-            saveDialog.Title = "Сохранить запись";
-            saveDialog.FileName = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".wav";
-            bool? result = saveDialog.ShowDialog();
-            if (result == true)
+            var saveDialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Filter = "WAV файлы (*.wav)|*.wav",
+                Title = "Сохранить запись",
+                FileName = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".wav"
+            };
+            if (saveDialog.ShowDialog() == true)
             {
                 try
                 {
@@ -722,24 +1116,23 @@ namespace VibroAnalyzer.WPF
                         Buffer.BlockCopy(copy, 0, buffer, 0, buffer.Length);
                         writer.Write(buffer, 0, buffer.Length);
                     }
-                    MessageBox.Show($"Запись сохранена:\n{saveDialog.FileName}\n\nДлительность: {copy.Length / (double)_currentSampleRate:F2} сек\nЧастота: {_currentSampleRate} Гц",
-                                  "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show($"Запись сохранена:\n{saveDialog.FileName}", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Ошибка при сохранении:\n{ex.Message}",
-                                  "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Ошибка при сохранении:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
 
         private void BtnOpen_Click(object sender, RoutedEventArgs e)
         {
-            var openFileDialog = new Microsoft.Win32.OpenFileDialog();
-            openFileDialog.Filter = "WAV файлы (*.wav)|*.wav";
-            openFileDialog.Title = "Открыть запись для анализа";
-            bool? result = openFileDialog.ShowDialog();
-            if (result == true)
+            var openFileDialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "WAV файлы (*.wav)|*.wav",
+                Title = "Открыть запись для анализа"
+            };
+            if (openFileDialog.ShowDialog() == true)
             {
                 try
                 {
@@ -753,21 +1146,17 @@ namespace VibroAnalyzer.WPF
                         for (int i = 0; i < bytesRead; i += 2)
                         {
                             short sampleValue = BitConverter.ToInt16(buffer, i);
-                            double normalizedSample = sampleValue / 32768.0;
-                            samples.Add(normalizedSample);
+                            samples.Add(sampleValue / 32768.0);
                         }
                         _loadedSamples = samples.ToArray();
                         _playbackPosition = 0;
                         _isPaused = false;
                         StopSeekRepeat();
+
                         double[] displaySamples = _loadedSamples.Take(1000).ToArray();
-                        UpdateOscilloscopeFromFile(displaySamples);
-                        UpdateSpectrum(_loadedSamples, _loadedSampleRate);
+                        UpdateOscilloscope(displaySamples);
                         double durationSeconds = _loadedSamples.Length / (double)_loadedSampleRate;
-                        txtStatus.Text = $"Файл: {System.IO.Path.GetFileName(openFileDialog.FileName)} | " +
-                                       $"Длительность: {durationSeconds:F2} сек | " +
-                                       $"Частота: {_loadedSampleRate} Гц | " +
-                                       $"Каналов: {channels}";
+                        txtStatus.Text = $"Файл: {System.IO.Path.GetFileName(openFileDialog.FileName)} | Длит.: {durationSeconds:F2} с";
                         _isRecordingMode = false;
                         if (_isRecording)
                         {
@@ -788,24 +1177,17 @@ namespace VibroAnalyzer.WPF
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Ошибка при открытии файла:\n{ex.Message}",
-                                  "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Ошибка при открытии файла:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
 
         private void BtnPlay_Click(object sender, RoutedEventArgs e)
         {
-            if (_loadedSamples == null || _loadedSamples.Length == 0)
-            {
-                MessageBox.Show("Нет данных для воспроизведения. Сначала откройте WAV файл.",
-                              "Внимание", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
+            if (_loadedSamples == null || _loadedSamples.Length == 0) return;
             try
             {
                 StopPlaybackInternal();
-
                 byte[] buffer = new byte[_loadedSamples.Length * 2];
                 for (int i = 0; i < _loadedSamples.Length; i++)
                 {
@@ -815,11 +1197,8 @@ namespace VibroAnalyzer.WPF
                 var waveFormat = new NAudio.Wave.WaveFormat(_loadedSampleRate, 16, 1);
                 _memoryStream = new System.IO.MemoryStream(buffer);
                 _rawStream = new NAudio.Wave.RawSourceWaveStream(_memoryStream, waveFormat);
-                if (_playbackPosition > 0)
-                {
-                    long bytePosition = (long)_playbackPosition * 2;
-                    _rawStream.Position = bytePosition;
-                }
+                if (_playbackPosition > 0) _rawStream.Position = (long)_playbackPosition * 2;
+
                 _waveOut = new NAudio.Wave.WaveOutEvent();
                 _waveOut.PlaybackStopped += WaveOut_PlaybackStopped;
                 _waveOut.Init(_rawStream);
@@ -832,13 +1211,11 @@ namespace VibroAnalyzer.WPF
                 btnStart.IsEnabled = false;
                 btnStop.IsEnabled = true;
                 btnResume.IsEnabled = false;
-                txtStatus.Text = $"Воспроизведение... {FormatTime(0)} из {FormatTime(totalSeconds)}";
                 _recordingTimer.Start();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при воспроизведении:\n{ex.Message}",
-                              "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Ошибка при воспроизведении:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 StopPlaybackInternal();
             }
         }
@@ -864,96 +1241,49 @@ namespace VibroAnalyzer.WPF
                 _isSeeking = true;
                 seekSlider.Value = 100;
                 _isSeeking = false;
-                if (_loadedSamples != null && _loadedSampleRate > 0)
-                {
-                    UpdateSeekTimeText(_loadedSamples.Length / (double)_loadedSampleRate);
-                }
                 txtStatus.Text = "Воспроизведение завершено";
             });
         }
 
-        private void UpdateOscilloscopeFromFile(double[] samples)
-        {
-            if (!ShowOscillation) return;
-            double[] time = new double[samples.Length];
-            for (int i = 0; i < samples.Length; i++)
-            {
-                time[i] = i;
-            }
-            wpfPlotOscilloscope.Plot.Clear();
-            wpfPlotOscilloscope.Plot.Add.Scatter(time, samples);
-            wpfPlotOscilloscope.Refresh();
-        }
-
-        private void Window_Loaded(object sender, RoutedEventArgs e)
-        {
-            ApplyTheme(_currentTheme);
-        }
+        private void Window_Loaded(object sender, RoutedEventArgs e) => ApplyTheme(_currentTheme);
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             StopSeekRepeat();
             _recordingTimer?.Stop();
-            if (_waveOut != null)
-            {
-                _waveOut.PlaybackStopped -= WaveOut_PlaybackStopped;
-                _waveOut.Stop();
-                _waveOut.Dispose();
-                _waveOut = null;
-            }
-            _rawStream?.Dispose();
-            _memoryStream?.Dispose();
+            StopPlaybackInternal();
             _audioCapture?.Dispose();
         }
 
-        // ===== ПЕРЕМОТКА =====
+        // ===== ПЕРЕМОТКА И ГОРЯЧИЕ КЛАВИШИ =====
 
         private void SeekSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (_isSeeking) return;
-            if (_loadedSamples == null || _loadedSamples.Length == 0)
-                return;
-
+            if (_isSeeking || _loadedSamples == null || _loadedSamples.Length == 0) return;
             double totalSeconds = _loadedSamples.Length / (double)_loadedSampleRate;
             double newPositionSeconds = (seekSlider.Value / 100.0) * totalSeconds;
             _playbackPosition = (int)(newPositionSeconds * _loadedSampleRate);
 
-            if (_isPlaying)
-            {
-                StopPlaybackInternal();
-                BtnPlay_Click(sender, new RoutedEventArgs());
-            }
+            if (_isPlaying) { StopPlaybackInternal(); BtnPlay_Click(sender, new RoutedEventArgs()); }
             else if (_isPaused)
             {
-                if (_rawStream != null)
-                {
-                    try { _rawStream.Position = (long)_playbackPosition * 2; } catch { }
-                }
-                UpdateGraphicsAtPosition();
-                txtStatus.Text = $"Пауза на {newPositionSeconds:F2} сек из {totalSeconds:F2} сек";
-            }
-            else
-            {
+                if (_rawStream != null) { try { _rawStream.Position = (long)_playbackPosition * 2; } catch { } }
                 UpdateGraphicsAtPosition();
             }
+            else { UpdateGraphicsAtPosition(); }
         }
 
         private void TxtSeekTime_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Enter)
-            {
-                ApplySeekTime();
-                Keyboard.ClearFocus();
-                e.Handled = true;
-            }
+            if (e.Key == Key.Enter) { ApplySeekTime(); Keyboard.ClearFocus(); e.Handled = true; }
         }
 
         private void TxtSeekTime_LostFocus(object sender, RoutedEventArgs e)
         {
             if (_loadedSamples == null || _loadedSamples.Length == 0) return;
             string text = txtSeekTime.Text?.Trim();
-            bool ok = double.TryParse(text?.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out _);
-            if (ok) ApplySeekTime();
+            if (double.TryParse(text?.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out _))
+                ApplySeekTime();
             else UpdateSeekTimeText(_playbackPosition / (double)_loadedSampleRate);
         }
 
@@ -961,32 +1291,20 @@ namespace VibroAnalyzer.WPF
         {
             if (_loadedSamples == null || _loadedSamples.Length == 0) return;
             string text = txtSeekTime.Text?.Trim();
-            if (string.IsNullOrEmpty(text)) return;
-
-            if (!double.TryParse(text.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out double seconds))
+            if (string.IsNullOrEmpty(text) || !double.TryParse(text.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out double seconds))
                 return;
 
             double totalSeconds = _loadedSamples.Length / (double)_loadedSampleRate;
             seconds = Math.Max(0, Math.Min(seconds, totalSeconds));
             _playbackPosition = (int)(seconds * _loadedSampleRate);
 
-            if (_isPlaying)
-            {
-                StopPlaybackInternal();
-                BtnPlay_Click(this, new RoutedEventArgs());
-            }
+            if (_isPlaying) { StopPlaybackInternal(); BtnPlay_Click(this, new RoutedEventArgs()); }
             else if (_isPaused)
             {
-                if (_rawStream != null)
-                {
-                    try { _rawStream.Position = (long)_playbackPosition * 2; } catch { }
-                }
+                if (_rawStream != null) { try { _rawStream.Position = (long)_playbackPosition * 2; } catch { } }
                 UpdateGraphicsAtPosition();
             }
-            else
-            {
-                UpdateGraphicsAtPosition();
-            }
+            else { UpdateGraphicsAtPosition(); }
 
             _isSeeking = true;
             seekSlider.Value = totalSeconds > 0 ? (seconds / totalSeconds) * 100 : 0;
@@ -1008,20 +1326,13 @@ namespace VibroAnalyzer.WPF
             double newSeconds = Math.Max(0, Math.Min(totalSeconds, currentSeconds + deltaSeconds));
             _playbackPosition = (int)Math.Round(newSeconds * _loadedSampleRate);
 
-            if (_isPlaying)
-            {
-                StopPlaybackInternal();
-                BtnPlay_Click(this, new RoutedEventArgs());
-            }
+            if (_isPlaying) { StopPlaybackInternal(); BtnPlay_Click(this, new RoutedEventArgs()); }
             else if (_isPaused)
             {
                 if (_rawStream != null) { try { _rawStream.Position = (long)_playbackPosition * 2; } catch { } }
                 UpdateGraphicsAtPosition();
             }
-            else
-            {
-                UpdateGraphicsAtPosition();
-            }
+            else { UpdateGraphicsAtPosition(); }
 
             _isSeeking = true;
             seekSlider.Value = totalSeconds > 0 ? (newSeconds / totalSeconds) * 100 : 0;
@@ -1033,18 +1344,15 @@ namespace VibroAnalyzer.WPF
             if (_loadedSamples == null || _loadedSamples.Length == 0) return;
             SeekBy(direction * _currentSeekStep);
             _seekRepeatDirection = direction;
-
             if (_seekRepeatTimer == null)
             {
-                _seekRepeatTimer = new System.Windows.Threading.DispatcherTimer();
-                _seekRepeatTimer.Interval = TimeSpan.FromMilliseconds(150);
+                _seekRepeatTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
                 _seekRepeatTimer.Tick += (s, e) => SeekBy(_seekRepeatDirection * _currentSeekStep);
             }
             _seekRepeatTimer.Start();
         }
 
         private void StopSeekRepeat() => _seekRepeatTimer?.Stop();
-
         private void BtnSeekBack_MouseDown(object sender, MouseButtonEventArgs e) => StartSeekRepeat(-1);
         private void BtnSeekForward_MouseDown(object sender, MouseButtonEventArgs e) => StartSeekRepeat(+1);
         private void BtnSeek_MouseUp(object sender, MouseButtonEventArgs e) => StopSeekRepeat();
@@ -1052,14 +1360,37 @@ namespace VibroAnalyzer.WPF
 
         protected override void OnPreviewKeyDown(KeyEventArgs e)
         {
-            if (e.Key == Key.Left || e.Key == Key.Right)
+            if (e.Key == Key.Escape && _selectedChartGroup != null)
             {
-                if (Keyboard.FocusedElement is TextBox) { base.OnPreviewKeyDown(e); return; }
-                double dir = e.Key == Key.Right ? +1 : -1;
-                SeekBy(dir * _currentSeekStep);
+                DeselectChart();
                 e.Handled = true;
                 return;
             }
+
+            if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && _selectedChartGroup != null)
+            {
+                if (e.Key == Key.OemPlus || e.Key == Key.Add)
+                {
+                    ChangeSelectedChartHeight(+40.0);
+                    e.Handled = true;
+                    return;
+                }
+                if (e.Key == Key.OemMinus || e.Key == Key.Subtract)
+                {
+                    ChangeSelectedChartHeight(-40.0);
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            if (e.Key == Key.Left || e.Key == Key.Right)
+            {
+                if (Keyboard.FocusedElement is TextBox) { base.OnPreviewKeyDown(e); return; }
+                SeekBy((e.Key == Key.Right ? +1 : -1) * _currentSeekStep);
+                e.Handled = true;
+                return;
+            }
+
             base.OnPreviewKeyDown(e);
         }
 
@@ -1073,11 +1404,8 @@ namespace VibroAnalyzer.WPF
             {
                 double[] windowSamples = new double[endIndex - startIndex];
                 Array.Copy(_loadedSamples, startIndex, windowSamples, 0, windowSamples.Length);
-                UpdateOscilloscopeFromFile(windowSamples);
-                UpdateSpectrum(windowSamples, _loadedSampleRate);
+                UpdateOscilloscope(windowSamples);
             }
-            RebuildSpectrogramAtPosition(_playbackPosition, _loadedSamples, _loadedSampleRate);
-
             double currentTime = _playbackPosition / (double)_loadedSampleRate;
             double totalDuration = _loadedSamples.Length / (double)_loadedSampleRate;
             UpdateSeekTimeText(currentTime);
@@ -1102,23 +1430,11 @@ namespace VibroAnalyzer.WPF
             {
                 try
                 {
-                    long currentBytePosition = _rawStream.Position;
-                    double currentPositionSeconds = (double)currentBytePosition / (_loadedSampleRate * 2);
+                    double currentPositionSeconds = (double)_rawStream.Position / (_loadedSampleRate * 2);
                     _playbackPosition = (int)(currentPositionSeconds * _loadedSampleRate);
                     if (_playbackPosition >= _loadedSamples.Length) _playbackPosition = _loadedSamples.Length - 1;
 
-                    int windowSize = 1000;
-                    int startIndex = Math.Max(0, _playbackPosition - windowSize / 2);
-                    int endIndex = Math.Min(_loadedSamples.Length, startIndex + windowSize);
-                    if (endIndex > startIndex && startIndex < _loadedSamples.Length)
-                    {
-                        double[] windowSamples = new double[endIndex - startIndex];
-                        Array.Copy(_loadedSamples, startIndex, windowSamples, 0, windowSamples.Length);
-                        UpdateOscilloscopeFromFile(windowSamples);
-                        UpdateSpectrum(windowSamples, _loadedSampleRate);
-                    }
-                    RebuildSpectrogramAtPosition(_playbackPosition, _loadedSamples, _loadedSampleRate);
-
+                    UpdateGraphicsAtPosition();
                     double totalSeconds = _loadedSamples.Length / (double)_loadedSampleRate;
                     _isSeeking = true;
                     seekSlider.Value = (currentPositionSeconds / totalSeconds) * 100;

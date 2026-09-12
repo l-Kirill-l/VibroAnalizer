@@ -3,11 +3,12 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ScottPlot="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF"
         Title="Виброанализатор"
-        Height="900"
-        Width="1200"
+        Height="680"
+        Width="1050"
         WindowStartupLocation="CenterScreen"
         Loaded="Window_Loaded"
-        Closing="Window_Closing">
+        Closing="Window_Closing"
+        PreviewMouseDown="Window_PreviewMouseDown">
 
     <DockPanel LastChildFill="True">
 
@@ -36,9 +37,13 @@
             <StatusBarItem>
                 <TextBlock x:Name="txtRMS" Text="RMS: 0"/>
             </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock x:Name="txtStats" Text="Пик-фактор: 0 | Эксцесс: 0"/>
+            </StatusBarItem>
         </StatusBar>
 
-        <!-- Панель перемотки: отдельное место над статус-баром -->
+        <!-- Панель перемотки -->
         <Grid DockPanel.Dock="Bottom" Height="40">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
@@ -66,32 +71,136 @@
                 <TextBlock Text="Время, сек:" VerticalAlignment="Center" Margin="0,0,5,0"/>
                 <TextBox x:Name="txtSeekTime" Width="80" VerticalAlignment="Center"
                          KeyDown="TxtSeekTime_KeyDown" LostFocus="TxtSeekTime_LostFocus"
-                         ToolTip="Введите время в секундах (например 2,375) и нажмите Enter. Разделитель — точка или запятая."/>
+                         ToolTip="Введите время в секундах (например 2,375) и нажмите Enter."/>
             </StackPanel>
         </Grid>
 
-        <Grid x:Name="plotsGrid">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
+        <!-- Рабочая зона со ScrollViewer -->
+        <ScrollViewer x:Name="plotsScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="plotsStackPanel" Margin="5">
 
-            <!-- Осциллограмма (верхний график) -->
-            <GroupBox x:Name="groupOscillation" Grid.Row="0" Header="Осциллограмма" Margin="5">
-                <ScottPlot:WpfPlot x:Name="wpfPlotOscilloscope"/>
-            </GroupBox>
+                <!-- График 1: Осциллограмма -->
+                <GroupBox x:Name="groupOscillation" Margin="0,0,0,8" MinHeight="220" Height="260">
+                    <GroupBox.Header>
+                        <Border x:Name="headerOscillation" Background="Transparent" Padding="4"
+                                MouseLeftButtonDown="ChartHeader_MouseLeftButtonDown"
+                                ToolTip="Кликните для выбора. Масштаб высоты: Ctrl + колесико или Ctrl + (+/-). Сброс: двойной клик. Снять выбор: Esc или клик вне заголовка.">
+                            <TextBlock Text="📈 Осциллограмма сигнала" FontWeight="SemiBold"/>
+                        </Border>
+                    </GroupBox.Header>
+                    <ScottPlot:WpfPlot x:Name="wpfPlotOscilloscope"/>
+                </GroupBox>
 
-            <!-- Спектр (средний график) -->
-            <GroupBox x:Name="groupSpectrum" Grid.Row="1" Header="Спектр (БПФ)" Margin="5">
-                <ScottPlot:WpfPlot x:Name="wpfPlotSpectrum"/>
-            </GroupBox>
+                <!-- График 2: Спектр (БПФ) -->
+                <GroupBox x:Name="groupSpectrum" Margin="0,0,0,8" MinHeight="220" Height="260">
+                    <GroupBox.Header>
+                        <Border x:Name="headerSpectrum" Background="Transparent" Padding="4"
+                                MouseLeftButtonDown="ChartHeader_MouseLeftButtonDown"
+                                ToolTip="Кликните для выбора. Масштаб высоты: Ctrl + колесико или Ctrl + (+/-). Сброс: двойной клик. Снять выбор: Esc или клик вне заголовка.">
+                            <TextBlock Text="📊 Спектр амплитуд (БПФ)" FontWeight="SemiBold"/>
+                        </Border>
+                    </GroupBox.Header>
+                    <ScottPlot:WpfPlot x:Name="wpfPlotSpectrum"/>
+                </GroupBox>
 
-            <!-- Спектрограмма (нижний график) -->
-            <GroupBox x:Name="groupWaterfall" Grid.Row="2" Header="Спектрограмма (водопад)" Margin="5">
-                <ScottPlot:WpfPlot x:Name="wpfPlotSpectrogram"/>
-            </GroupBox>
-        </Grid>
+                <!-- График 3: Спектрограмма (Водопад) -->
+                <GroupBox x:Name="groupWaterfall" Margin="0,0,0,8" MinHeight="220" Height="260">
+                    <GroupBox.Header>
+                        <Border x:Name="headerWaterfall" Background="Transparent" Padding="4"
+                                MouseLeftButtonDown="ChartHeader_MouseLeftButtonDown"
+                                ToolTip="Кликните для выбора. Масштаб высоты: Ctrl + колесико или Ctrl + (+/-). Сброс: двойной клик. Снять выбор: Esc или клик вне заголовка.">
+                            <TextBlock Text="🌊 Спектрограмма (Водопад)" FontWeight="SemiBold"/>
+                        </Border>
+                    </GroupBox.Header>
+                    <ScottPlot:WpfPlot x:Name="wpfPlotSpectrogram"/>
+                </GroupBox>
+
+                <!-- График 4: Огибающая / RMS во времени -->
+                <GroupBox x:Name="groupEnvelope" Margin="0,0,0,8" MinHeight="220" Height="260">
+                    <GroupBox.Header>
+                        <Border x:Name="headerEnvelope" Background="Transparent" Padding="4"
+                                MouseLeftButtonDown="ChartHeader_MouseLeftButtonDown"
+                                ToolTip="Кликните для выбора. Масштаб высоты: Ctrl + колесико или Ctrl + (+/-). Сброс: двойной клик. Снять выбор: Esc или клик вне заголовка.">
+                            <TextBlock Text="📉 Огибающая сигнала / RMS тренд" FontWeight="SemiBold"/>
+                        </Border>
+                    </GroupBox.Header>
+                    <ScottPlot:WpfPlot x:Name="wpfPlotEnvelope"/>
+                </GroupBox>
+
+                <!-- График 5: Плотность спектра мощности (PSD) -->
+                <GroupBox x:Name="groupPsd" Margin="0,0,0,8" MinHeight="220" Height="260">
+                    <GroupBox.Header>
+                        <Border x:Name="headerPsd" Background="Transparent" Padding="4"
+                                MouseLeftButtonDown="ChartHeader_MouseLeftButtonDown"
+                                ToolTip="Кликните для выбора. Масштаб высоты: Ctrl + колесико или Ctrl + (+/-). Сброс: двойной клик. Снять выбор: Esc или клик вне заголовка.">
+                            <TextBlock Text="⚡ Спектральная плотность мощности (PSD, дБ)" FontWeight="SemiBold"/>
+                        </Border>
+                    </GroupBox.Header>
+                    <ScottPlot:WpfPlot x:Name="wpfPlotPsd"/>
+                </GroupBox>
+
+                <!-- График 6: Автокорреляция (АКФ) -->
+                <GroupBox x:Name="groupAcf" Margin="0,0,0,8" MinHeight="220" Height="260">
+                    <GroupBox.Header>
+                        <Border x:Name="headerAcf" Background="Transparent" Padding="4"
+                                MouseLeftButtonDown="ChartHeader_MouseLeftButtonDown"
+                                ToolTip="Кликните для выбора. Масштаб высоты: Ctrl + колесико или Ctrl + (+/-). Сброс: двойной клик. Снять выбор: Esc или клик вне заголовка.">
+                            <TextBlock Text="🔄 Автокорреляционная функция (АКФ)" FontWeight="SemiBold"/>
+                        </Border>
+                    </GroupBox.Header>
+                    <ScottPlot:WpfPlot x:Name="wpfPlotAcf"/>
+                </GroupBox>
+
+                <!-- График 7: Октавный анализ (1/3 октавы) -->
+                <GroupBox x:Name="groupOctave" Margin="0,0,0,8" MinHeight="220" Height="260">
+                    <GroupBox.Header>
+                        <Border x:Name="headerOctave" Background="Transparent" Padding="4"
+                                MouseLeftButtonDown="ChartHeader_MouseLeftButtonDown"
+                                ToolTip="Кликните для выбора. Масштаб высоты: Ctrl + колесико или Ctrl + (+/-). Сброс: двойной клик. Снять выбор: Esc или клик вне заголовка.">
+                            <TextBlock Text="🎚 Октавные полосы (1/3 октавы)" FontWeight="SemiBold"/>
+                        </Border>
+                    </GroupBox.Header>
+                    <ScottPlot:WpfPlot x:Name="wpfPlotOctave"/>
+                </GroupBox>
+
+                <!-- График 8: Кепстральный анализ (Cepstrum) -->
+                <GroupBox x:Name="groupCepstrum" Margin="0,0,0,8" MinHeight="220" Height="260">
+                    <GroupBox.Header>
+                        <Border x:Name="headerCepstrum" Background="Transparent" Padding="4"
+                                MouseLeftButtonDown="ChartHeader_MouseLeftButtonDown"
+                                ToolTip="Кликните для выбора. Масштаб высоты: Ctrl + колесико или Ctrl + (+/-). Сброс: двойной клик. Снять выбор: Esc или клик вне заголовка.">
+                            <TextBlock Text="🔬 Кепстральный анализ (Cepstrum)" FontWeight="SemiBold"/>
+                        </Border>
+                    </GroupBox.Header>
+                    <ScottPlot:WpfPlot x:Name="wpfPlotCepstrum"/>
+                </GroupBox>
+
+                <!-- График 9: Вейвлет-анализ (CWT) -->
+                <GroupBox x:Name="groupCwt" Margin="0,0,0,8" MinHeight="220" Height="260">
+                    <GroupBox.Header>
+                        <Border x:Name="headerCwt" Background="Transparent" Padding="4"
+                                MouseLeftButtonDown="ChartHeader_MouseLeftButtonDown"
+                                ToolTip="Кликните для выбора. Масштаб высоты: Ctrl + колесико или Ctrl + (+/-). Сброс: двойной клик. Снять выбор: Esc или клик вне заголовка.">
+                            <TextBlock Text="🌀 Вейвлет-анализ (CWT)" FontWeight="SemiBold"/>
+                        </Border>
+                    </GroupBox.Header>
+                    <ScottPlot:WpfPlot x:Name="wpfPlotCwt"/>
+                </GroupBox>
+
+                <!-- График 10: Фазовый портрет / Карта Пуанкаре -->
+                <GroupBox x:Name="groupPhase" Margin="0,0,0,8" MinHeight="220" Height="260">
+                    <GroupBox.Header>
+                        <Border x:Name="headerPhase" Background="Transparent" Padding="4"
+                                MouseLeftButtonDown="ChartHeader_MouseLeftButtonDown"
+                                ToolTip="Кликните для выбора. Масштаб высоты: Ctrl + колесико или Ctrl + (+/-). Сброс: двойной клик. Снять выбор: Esc или клик вне заголовка.">
+                            <TextBlock Text="♾ Фазовый портрет x(t) vs x(t - τ)" FontWeight="SemiBold"/>
+                        </Border>
+                    </GroupBox.Header>
+                    <ScottPlot:WpfPlot x:Name="wpfPlotPhase"/>
+                </GroupBox>
+
+            </StackPanel>
+        </ScrollViewer>
 
     </DockPanel>
 </Window>
