@@ -1,0 +1,353 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="VibroAnalyzer.App.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Resources>
+        <!-- Палитра VWL (WEB/assets/panel.css): единый «приборный» тёмный стиль. -->
+        <Color x:Key="SystemAccentColor">#49E8B2</Color>
+        <Color x:Key="SystemAccentColorLight1">#6FF0C4</Color>
+        <Color x:Key="SystemAccentColorLight2">#9AF7D6</Color>
+        <Color x:Key="SystemAccentColorLight3">#C8FFE9</Color>
+        <Color x:Key="SystemAccentColorDark1">#1FAB79</Color>
+        <Color x:Key="SystemAccentColorDark2">#16845D</Color>
+        <Color x:Key="SystemAccentColorDark3">#0E5F43</Color>
+
+        <SolidColorBrush x:Key="Chassis0Brush" Color="#0A0D11" />
+        <SolidColorBrush x:Key="Chassis1Brush" Color="#141A21" />
+        <SolidColorBrush x:Key="Chassis2Brush" Color="#1B232C" />
+        <SolidColorBrush x:Key="Chassis3Brush" Color="#232D38" />
+        <SolidColorBrush x:Key="ScreenBrush" Color="#0D1218" />
+        <SolidColorBrush x:Key="ScreenEdgeBrush" Color="#05070A" />
+        <SolidColorBrush x:Key="Ink0Brush" Color="#F2F6FA" />
+        <SolidColorBrush x:Key="Ink1Brush" Color="#B7C3CF" />
+        <SolidColorBrush x:Key="Ink2Brush" Color="#798793" />
+        <SolidColorBrush x:Key="HairlineBrush" Color="#24AAC8DC" />
+        <SolidColorBrush x:Key="HairlineStrongBrush" Color="#42BED7EB" />
+        <SolidColorBrush x:Key="ChassisEdgeBrush" Color="#14B4CDE6" />
+        <SolidColorBrush x:Key="AccentAquaBrush" Color="#1FAB79" />
+        <SolidColorBrush x:Key="AccentBrightBrush" Color="#49E8B2" />
+        <SolidColorBrush x:Key="AccentBlueBrush" Color="#3F8CE8" />
+        <SolidColorBrush x:Key="AccentOrangeBrush" Color="#E06A33" />
+        <SolidColorBrush x:Key="DangerBrush" Color="#E2594F" />
+        <SolidColorBrush x:Key="ButtonHoverBrush" Color="#2B3745" />
+        <SolidColorBrush x:Key="ButtonPressedBrush" Color="#10151B" />
+        <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#2A1A1D" />
+
+        <LinearGradientBrush x:Key="ChassisBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#232D38" Offset="0" />
+            <GradientStop Color="#1B232C" Offset="0.55" />
+            <GradientStop Color="#141A21" Offset="1" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="PanelBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#232D38" Offset="0" />
+            <GradientStop Color="#1B232C" Offset="1" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="BarBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#1B232C" Offset="0" />
+            <GradientStop Color="#0A0D11" Offset="1" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="ButtonBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#232D38" Offset="0" />
+            <GradientStop Color="#141A21" Offset="1" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="PrimaryBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#6FF0C4" Offset="0" />
+            <GradientStop Color="#49E8B2" Offset="1" />
+        </LinearGradientBrush>
+
+        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Menlo, Liberation Mono, DejaVu Sans Mono</FontFamily>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{StaticResource Chassis0Brush}" />
+            <Setter Property="FontFamily" Value="Inter" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+        </Style>
+
+        <Style Selector="TextBlock.tag">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LetterSpacing" Value="1.4" />
+            <Setter Property="Foreground" Value="{StaticResource AccentBrightBrush}" />
+        </Style>
+
+        <Style Selector="TextBlock.hero">
+            <Setter Property="FontSize" Value="26" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+            <Setter Property="LetterSpacing" Value="-0.4" />
+        </Style>
+
+        <Style Selector="TextBlock.subtitle">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource Ink1Brush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style Selector="TextBlock.module-label">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LetterSpacing" Value="1.0" />
+            <Setter Property="Foreground" Value="{StaticResource Ink2Brush}" />
+        </Style>
+
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LetterSpacing" Value="0.8" />
+            <Setter Property="Foreground" Value="{StaticResource Ink2Brush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+        </Style>
+
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource Ink2Brush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="LineHeight" Value="18" />
+        </Style>
+
+        <Style Selector="TextBlock.readout-label">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LetterSpacing" Value="1.0" />
+            <Setter Property="Foreground" Value="{StaticResource Ink2Brush}" />
+        </Style>
+
+        <Style Selector="TextBlock.readout-value">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="23" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource AccentBrightBrush}" />
+        </Style>
+
+        <Style Selector="TextBlock.readout-unit">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{StaticResource Ink2Brush}" />
+        </Style>
+
+        <Style Selector="TextBlock.value">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+        </Style>
+
+        <Style Selector="TextBlock.status">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{StaticResource Ink1Brush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style Selector="TextBlock.status.ok">
+            <Setter Property="Foreground" Value="{StaticResource AccentBrightBrush}" />
+        </Style>
+
+        <Style Selector="TextBlock.status.danger">
+            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+        </Style>
+
+        <Style Selector="Border.chassis">
+            <Setter Property="Background" Value="{StaticResource ChassisBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ChassisEdgeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="20" />
+            <Setter Property="Padding" Value="18" />
+        </Style>
+
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ChassisEdgeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+
+        <Style Selector="Border.modebar">
+            <Setter Property="Background" Value="{StaticResource BarBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ChassisEdgeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="12,10" />
+        </Style>
+
+        <Style Selector="Border.screen">
+            <Setter Property="Background" Value="{StaticResource ScreenBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ScreenEdgeBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="3" />
+            <Setter Property="ClipToBounds" Value="True" />
+        </Style>
+
+        <Style Selector="Border.readout">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ChassisEdgeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="12,9" />
+        </Style>
+
+        <Style Selector="Border.pill">
+            <Setter Property="Background" Value="#80141A21" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineStrongBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="Padding" Value="10,6" />
+        </Style>
+
+        <Style Selector="Border.route">
+            <Setter Property="Background" Value="#66141A21" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+
+        <Style Selector="TextBlock.route-title">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+        </Style>
+
+        <Style Selector="TextBlock.route-subtitle">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{StaticResource Ink2Brush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style Selector="Button">
+            <Setter Property="Background" Value="{StaticResource ButtonBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ChassisEdgeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="MinHeight" Value="34" />
+        </Style>
+
+        <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource ButtonHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineStrongBrush}" />
+        </Style>
+
+        <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource ButtonPressedBrush}" />
+        </Style>
+
+        <Style Selector="Button:disabled">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+
+        <Style Selector="Button.small">
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource Chassis0Brush}" />
+            <Setter Property="BorderBrush" Value="#9949E8B2" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentBrightBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource Chassis0Brush}" />
+        </Style>
+
+        <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentAquaBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource Chassis0Brush}" />
+        </Style>
+
+        <Style Selector="Button.danger">
+            <Setter Property="BorderBrush" Value="#66E2594F" />
+            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+        </Style>
+
+        <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource DangerSurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
+        </Style>
+
+        <Style Selector="ComboBox">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="MinHeight" Value="34" />
+        </Style>
+
+        <Style Selector="ComboBox:pointerover">
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineStrongBrush}" />
+        </Style>
+
+        <Style Selector="ComboBoxItem">
+            <Setter Property="Padding" Value="10,7" />
+        </Style>
+
+        <Style Selector="NumericUpDown">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="ShowButtonSpinner" Value="False" />
+        </Style>
+
+        <Style Selector="NumericUpDown:pointerover">
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineStrongBrush}" />
+        </Style>
+
+        <Style Selector="NumericUpDown /template/ TextBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+
+        <Style Selector="ToolTip">
+            <Setter Property="Background" Value="{StaticResource Chassis2Brush}" />
+            <Setter Property="Foreground" Value="{StaticResource Ink0Brush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
+        </Style>
+    </Application.Styles>
+</Application>

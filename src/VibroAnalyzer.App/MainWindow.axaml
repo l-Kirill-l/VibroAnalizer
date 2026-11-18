@@ -1,0 +1,193 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1240" d:DesignHeight="840"
+        x:Class="VibroAnalyzer.App.MainWindow"
+        Title="VibroAnalyzer — измерительная платформа"
+        Width="1240" Height="900" MinWidth="980" MinHeight="680">
+
+    <Border Classes="chassis" Margin="14">
+        <DockPanel>
+
+            <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="2,0,2,14">
+                <TextBlock Classes="tag" Text="VIBROANALYZER · HARDWARE APP" />
+                <TextBlock Classes="hero" Text="Измерительная платформа" />
+                <TextBlock Classes="subtitle"
+                           Text="Несколько входов и выходов одновременно: каждый датчик — отдельная шина со своими окнами, модуляцией, демодуляцией и анализаторами." />
+            </StackPanel>
+
+            <Border DockPanel.Dock="Top" Classes="modebar" Margin="0,0,0,12">
+                <StackPanel Spacing="9">
+                    <WrapPanel>
+                        <TextBlock Classes="label" Text="БЭКЕНД" Margin="0,0,7,0" />
+                        <ComboBox x:Name="BackendCombo" Width="130" Margin="0,0,8,0" />
+                        <Button x:Name="RefreshButton" Content="Обновить" Margin="0,0,14,0" />
+
+                        <TextBlock Classes="label" Text="ЧАСТОТА, ГЦ" Margin="0,0,7,0" />
+                        <ComboBox x:Name="RateCombo" Width="100" Margin="0,0,14,0" />
+                        <TextBlock Classes="label" Text="БУФЕР, КАДРОВ" Margin="0,0,7,0" />
+                        <ComboBox x:Name="BufferCombo" Width="100" Margin="0,0,14,0" />
+
+                        <Button x:Name="StartButton" Content="Старт" Classes="primary"
+                                Margin="0,0,6,0" MinWidth="96" />
+                        <Button x:Name="StopButton" Content="Стоп" Classes="danger"
+                                Margin="0,0,8,0" MinWidth="96" />
+                        <Button x:Name="SaveButton" Content="Сохранить отчёт" MinWidth="130" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <Border DockPanel.Dock="Bottom" Classes="card" Padding="12,8" Margin="0,12,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Border Classes="pill" VerticalAlignment="Center">
+                        <TextBlock Classes="label" Text="СТАТУС" />
+                    </Border>
+                    <TextBlock x:Name="StatusText" Classes="status"
+                               Text="Готово." VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+
+            <Grid ColumnDefinitions="*,370" ColumnSpacing="12">
+
+                <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="12">
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="module-label" Text="ВХОДЫ И ДАТЧИКИ" />
+                                <TextBlock Classes="hint"
+                                           Text="Один физический канал можно превратить в отдельный логический вход. На один канал допускается несколько входов — например, для разных окон или обработки." />
+
+                                <WrapPanel>
+                                    <TextBlock Classes="label" Text="УСТРОЙСТВО" Margin="0,0,7,0" />
+                                    <ComboBox x:Name="InputDeviceCombo" Width="260" Margin="0,0,12,0" />
+                                    <TextBlock Classes="label" Text="КАНАЛ" Margin="0,0,7,0" />
+                                    <NumericUpDown x:Name="InputChannelBox" Width="80" Margin="0,0,12,0"
+                                                   Minimum="0" Maximum="7" Increment="1"
+                                                   FormatString="0" ClipValueToMinMax="True" Value="0" />
+                                    <Button x:Name="AddInputButton" Content="Добавить" Margin="0,0,8,0" />
+                                    <Button x:Name="OverlayButton" Content="Наложение" />
+                                </WrapPanel>
+
+                                <StackPanel x:Name="InputsPanel" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="module-label" Text="ВЫХОДЫ И МОДУЛЯЦИИ" />
+                                <TextBlock Classes="hint"
+                                           Text="Каждый выход — независимая несущая и модуляция на своём физическом канале. Несколько выходов могут делить один канал: сигналы складываются." />
+
+                                <WrapPanel>
+                                    <TextBlock Classes="label" Text="УСТРОЙСТВО" Margin="0,0,7,0" />
+                                    <ComboBox x:Name="OutputDeviceCombo" Width="260" Margin="0,0,12,0" />
+                                    <TextBlock Classes="label" Text="КАНАЛ" Margin="0,0,7,0" />
+                                    <NumericUpDown x:Name="OutputChannelBox" Width="80" Margin="0,0,12,0"
+                                                   Minimum="0" Maximum="7" Increment="1"
+                                                   FormatString="0" ClipValueToMinMax="True" Value="0" />
+                                    <Button x:Name="AddOutputButton" Content="Добавить" />
+                                </WrapPanel>
+
+                                <StackPanel x:Name="OutputsPanel" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="module-label" Text="МИКШЕРЫ И ОБЪЕДИНЕНИЕ ДАТЧИКОВ" />
+                                <TextBlock Classes="hint"
+                                           Text="Виртуальный вход объединяет несколько датчиков: среднее, сумма, разность, минимум/максимум или НЧ+ВЧ полосы. К нему подключаются обычные окна анализаторов." />
+
+                                <WrapPanel>
+                                    <TextBlock Classes="label" Text="РЕЖИМ" Margin="0,0,7,0" />
+                                    <ComboBox x:Name="MixModeCombo" Width="190" Margin="0,0,12,0" />
+                                    <TextBlock Classes="label" Text="СРЕЗ НЧ/ВЧ, ГЦ" Margin="0,0,7,0" />
+                                    <NumericUpDown x:Name="MixCutoffBox" Width="100" Margin="0,0,12,0"
+                                                   Minimum="10" Maximum="20000" Increment="10"
+                                                   FormatString="0" ClipValueToMinMax="True" Value="1000" />
+                                    <Button x:Name="AddMixerButton" Content="Смешать все входы" Margin="0,0,8,0" />
+                                    <Button x:Name="AddBandMergeButton" Content="Объединить НЧ + ВЧ" />
+                                </WrapPanel>
+
+                                <StackPanel x:Name="VirtualPanel" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="12">
+                        <Border Classes="card">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="module-label" Text="ТЕКУЩИЕ ПОКАЗАНИЯ" />
+                                <TextBlock x:Name="SummaryBusText" Classes="hint" Text="Нет входов." />
+
+                                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                                      ColumnSpacing="10" RowSpacing="10">
+                                    <Border Grid.Row="0" Grid.Column="0" Classes="readout">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Classes="readout-label" Text="ЧАСТОТА" />
+                                            <TextBlock x:Name="FrequencyValue" Classes="readout-value" Text="—" />
+                                            <TextBlock Classes="readout-unit" Text="Гц" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Grid.Row="0" Grid.Column="1" Classes="readout">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Classes="readout-label" Text="СКЗ" />
+                                            <TextBlock x:Name="RmsValue" Classes="readout-value" Text="—" />
+                                            <TextBlock x:Name="RmsUnit" Classes="readout-unit" Text="В" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Grid.Row="1" Grid.Column="0" Classes="readout">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Classes="readout-label" Text="РАЗМАХ" />
+                                            <TextBlock x:Name="VppValue" Classes="readout-value" Text="—" />
+                                            <TextBlock x:Name="VppUnit" Classes="readout-unit" Text="В" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Grid.Row="1" Grid.Column="1" Classes="readout">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Classes="readout-label" Text="ПИК СПЕКТРА" />
+                                            <TextBlock x:Name="PeakValue" Classes="readout-value" Text="—" />
+                                            <TextBlock Classes="readout-unit" Text="Гц" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <TextBlock x:Name="ReadoutDetail" Classes="hint"
+                                           Text="Измерение не запущено." />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="7">
+                                <TextBlock Classes="module-label" Text="ВЫБРАННОЕ УСТРОЙСТВО" />
+                                <TextBlock x:Name="InfoText" Classes="hint" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="7">
+                                <TextBlock Classes="module-label" Text="СЕССИЯ" />
+                                <TextBlock x:Name="SessionText" Classes="hint" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="7">
+                                <TextBlock Classes="module-label" Text="ПОДСКАЗКИ" />
+                                <TextBlock Classes="hint"
+                                           Text="Окна можно открывать в нескольких экземплярах на одну шину — например, два осциллографа с разными окнами времени. Для разных устройств используйте общий клок или программную ресинхронизацию." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>

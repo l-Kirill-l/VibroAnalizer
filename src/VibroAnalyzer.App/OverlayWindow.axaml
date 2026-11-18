@@ -1,0 +1,56 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:sp="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
+        mc:Ignorable="d"
+        d:DesignWidth="1200" d:DesignHeight="900"
+        x:Class="VibroAnalyzer.App.OverlayWindow"
+        Title="Наложение сигналов"
+        Width="1200" Height="900"
+        MinWidth="860" MinHeight="620">
+
+    <Border Classes="chassis" Margin="12">
+        <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
+
+            <StackPanel Grid.Row="0" Spacing="3">
+                <TextBlock Classes="tag" Text="СРАВНЕНИЕ · НАЛОЖЕНИЕ ДАТЧИКОВ" />
+                <TextBlock Classes="hero" Text="Наложение сигналов" FontSize="22" />
+                <TextBlock Classes="subtitle"
+                           Text="Несколько шин на одном графике: форма сигнала и спектр. Цвет соответствует датчику в легенде." />
+            </StackPanel>
+
+            <Border Grid.Row="1" Classes="card" Padding="12">
+                <WrapPanel>
+                    <TextBlock Classes="label" Text="ОКНО, С" Margin="0,0,6,0" />
+                    <NumericUpDown x:Name="TimeWindowBox" Width="116" Margin="0,0,16,0"
+                                   Minimum="0.005" Maximum="0.5" Increment="0.005"
+                                   FormatString="0.000" ClipValueToMinMax="True" Value="0.05" />
+
+                    <TextBlock Classes="label" Text="БПФ" Margin="0,0,6,0" />
+                    <ComboBox x:Name="FftSizeBox" Width="110" Margin="0,0,16,0" />
+
+                    <TextBlock Classes="label" Text="ИСТОЧНИК" Margin="0,0,6,0" />
+                    <ComboBox x:Name="SourceBox" Width="200">
+                        <ComboBoxItem Content="Сырой сигнал" />
+                        <ComboBoxItem Content="Демодулированный" />
+                    </ComboBox>
+                </WrapPanel>
+            </Border>
+
+            <Grid Grid.Row="2" RowDefinitions="Auto,*,Auto,*" RowSpacing="7">
+                <TextBlock Grid.Row="0" Classes="module-label" Text="ВРЕМЕННАЯ ФОРМА" />
+
+                <Border Grid.Row="1" Classes="screen" Padding="4">
+                    <sp:AvaPlot x:Name="TimePlot" />
+                </Border>
+
+                <TextBlock Grid.Row="2" Classes="module-label" Text="СПЕКТР" Margin="0,6,0,0" />
+
+                <Border Grid.Row="3" Classes="screen" Padding="4">
+                    <sp:AvaPlot x:Name="SpectrumPlot" />
+                </Border>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
