@@ -1,0 +1,122 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:scott="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="700"
+        x:Class="VibroAnalyzer.App.ModulationWindow"
+        Title="Модуляция и несущая"
+        Width="960" Height="700"
+        MinWidth="800" MinHeight="580"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Classes="chassis" Margin="12">
+        <Grid RowDefinitions="Auto,*" RowSpacing="12">
+
+            <StackPanel Grid.Row="0" Spacing="3">
+                <TextBlock Classes="tag" Text="ГЕНЕРАТОР · МОДУЛЯЦИЯ" />
+                <TextBlock Classes="hero" Text="Модуляция и несущая" FontSize="22" />
+                <TextBlock Classes="subtitle"
+                           Text="Параметры генератора несущей и амплитудной модуляции. Изменения применяются сразу." />
+                <TextBlock x:Name="BoundText" Classes="hint" Text="Выход не задан" />
+            </StackPanel>
+
+            <Grid Grid.Row="1" ColumnDefinitions="400,*" ColumnSpacing="12">
+
+                <ScrollViewer Grid.Column="0"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="12">
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="10">
+                                <CheckBox x:Name="OutputEnabledCheckBox" Content="Выход включён" />
+                                <TextBlock Classes="module-label" Text="НЕСУЩАЯ" />
+
+                                <Grid ColumnDefinitions="*,150"
+                                      RowDefinitions="Auto,Auto,Auto"
+                                      RowSpacing="9" ColumnSpacing="10">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label"
+                                               Text="ЧАСТОТА, ГЦ" />
+                                    <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                                   x:Name="CarrierFrequencyBox"
+                                                   Minimum="10" Maximum="20000" Increment="1"
+                                                   FormatString="0" ClipValueToMinMax="True" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label"
+                                               Text="АМПЛИТУДА" />
+                                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                                   x:Name="CarrierAmplitudeBox"
+                                                   Minimum="0" Maximum="1" Increment="0.05"
+                                                   FormatString="0.00" ClipValueToMinMax="True" />
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label"
+                                               Text="ФОРМА" />
+                                    <ComboBox Grid.Row="2" Grid.Column="1"
+                                              x:Name="WaveformComboBox"
+                                              HorizontalAlignment="Stretch">
+                                        <ComboBoxItem Content="Синус" />
+                                        <ComboBoxItem Content="Прямоугольник" />
+                                        <ComboBoxItem Content="Треугольник" />
+                                    </ComboBox>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="10">
+                                <CheckBox x:Name="ModulateCheckBox" Content="Модуляция включена" />
+                                <TextBlock Classes="module-label" Text="МОДУЛИРУЮЩИЙ СИГНАЛ" />
+
+                                <Grid ColumnDefinitions="*,150"
+                                      RowDefinitions="Auto,Auto,Auto"
+                                      RowSpacing="9" ColumnSpacing="10">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label"
+                                               Text="ИНДЕКС МОДУЛЯЦИИ" />
+                                    <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                                   x:Name="ModulationIndexBox"
+                                                   Minimum="0" Maximum="1" Increment="0.01"
+                                                   FormatString="0.00" ClipValueToMinMax="True" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label"
+                                               Text="ЧАСТОТА, ГЦ" />
+                                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                                   x:Name="BasebandFrequencyBox"
+                                                   Minimum="1" Maximum="20000" Increment="1"
+                                                   FormatString="0" ClipValueToMinMax="True" />
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label"
+                                               Text="АМПЛИТУДА" />
+                                    <NumericUpDown Grid.Row="2" Grid.Column="1"
+                                                   x:Name="BasebandAmplitudeBox"
+                                                   Minimum="0" Maximum="1" Increment="0.05"
+                                                   FormatString="0.00" ClipValueToMinMax="True" />
+                                </Grid>
+
+                                <TextBlock Classes="hint"
+                                           Text="Огибающая: 1 + индекс × амплитуда × sin(2π·f·t). При индексе и амплитуде не больше 1 перемодуляции нет." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Border Grid.Column="1" Classes="card" Padding="10">
+                    <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
+                        <TextBlock Classes="module-label"
+                                   Text="ПРЕДПРОСМОТР · 3 ПЕРИОДА НЕСУЩЕЙ" />
+
+                        <Border Grid.Row="1" Classes="screen" Padding="3">
+                            <scott:AvaPlot x:Name="PreviewPlot"
+                                           MinHeight="260"
+                                           HorizontalAlignment="Stretch"
+                                           VerticalAlignment="Stretch" />
+                        </Border>
+
+                        <TextBlock Grid.Row="2" Classes="hint"
+                                   Text="График учитывает форму несущей и огибающую АМ. Масштаб по времени подстраивается под частоту." />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

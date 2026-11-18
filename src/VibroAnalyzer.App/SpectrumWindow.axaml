@@ -1,0 +1,85 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:sp="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
+        mc:Ignorable="d"
+        d:DesignWidth="1060" d:DesignHeight="700"
+        x:Class="VibroAnalyzer.App.SpectrumWindow"
+        Title="Спектр"
+        Width="1060" Height="700"
+        MinWidth="800" MinHeight="500">
+
+    <Border Classes="chassis" Margin="12">
+        <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
+
+            <StackPanel Grid.Row="0" Spacing="3">
+                <TextBlock Classes="tag" Text="ИЗМЕРИТЕЛЬНОЕ ОКНО · СПЕКТР" />
+                <TextBlock Classes="hero" Text="Спектр" FontSize="22" />
+                <TextBlock Classes="subtitle"
+                           Text="Амплитудный спектр сигнала, уровень пика и шумовая дорожка." />
+                <TextBlock x:Name="BoundText" Classes="hint" Text="Шина не задана" />
+            </StackPanel>
+
+            <Border Grid.Row="1" Classes="card" Padding="12">
+                <StackPanel Spacing="10">
+                    <WrapPanel>
+                        <TextBlock Classes="label" Text="БПФ" Margin="0,0,6,0" />
+                        <ComboBox x:Name="FftSizeBox" Width="110" Margin="0,0,14,0" />
+
+                        <TextBlock Classes="label" Text="ОКНО" Margin="0,0,6,0" />
+                        <ComboBox x:Name="WindowBox" Width="170" Margin="0,0,14,0" />
+
+                        <TextBlock Classes="label" Text="УСРЕДНЕНИЕ" Margin="0,0,6,0" />
+                        <NumericUpDown x:Name="AveragingBox" Width="110" Margin="0,0,14,0"
+                                       Minimum="0.01" Maximum="1" Increment="0.01"
+                                       FormatString="0.00" ClipValueToMinMax="True" Value="0.25" />
+
+                        <TextBlock Classes="label" Text="КАНАЛ" Margin="0,0,6,0" />
+                        <NumericUpDown x:Name="ChannelBox" Width="90"
+                                       Minimum="0" Maximum="7" Increment="1"
+                                       FormatString="0" ClipValueToMinMax="True" Value="0" />
+                    </WrapPanel>
+
+                    <WrapPanel>
+                        <TextBlock Classes="label" Text="ИСТОЧНИК" Margin="0,0,6,0" />
+                        <ComboBox x:Name="SourceBox" Width="200" SelectedIndex="0">
+                            <ComboBoxItem Content="Сырой сигнал" />
+                            <ComboBoxItem Content="Демодулированный" />
+                        </ComboBox>
+                    </WrapPanel>
+
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+                        <Border Grid.Column="0" Classes="readout">
+                            <StackPanel Spacing="2">
+                                <TextBlock Classes="readout-label" Text="ПИК" />
+                                <TextBlock x:Name="PeakLabel" Classes="readout-value" Text="—" />
+                                <TextBlock Classes="readout-unit" Text="Гц" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Classes="readout">
+                            <StackPanel Spacing="2">
+                                <TextBlock Classes="readout-label" Text="УРОВЕНЬ ПИКА" />
+                                <TextBlock x:Name="PeakLevelLabel" Classes="readout-value" Text="—" />
+                                <TextBlock Classes="readout-unit" Text="дБFS" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Classes="readout">
+                            <StackPanel Spacing="2">
+                                <TextBlock Classes="readout-label" Text="УРОВЕНЬ ШУМА" />
+                                <TextBlock x:Name="NoiseFloorLabel" Classes="readout-value" Text="—" />
+                                <TextBlock Classes="readout-unit" Text="дБFS" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="2" Classes="screen" Padding="4">
+                <sp:AvaPlot x:Name="PlotView" />
+            </Border>
+        </Grid>
+    </Border>
+</Window>
