@@ -74,7 +74,12 @@ public sealed record DeviceCapabilities(
     bool SupportsExclusiveMode,
     bool SupportsLoopback,
     bool SupportsChannelMapping,
-    string Notes = "");
+    string Notes = "",
+    double? MaxInputCurrentMa = null,
+    double? InputImpedanceOhms = null,
+    double? MinFrequencyHz = 20.0,
+    double? MaxFrequencyHz = 20000.0,
+    int? BitDepth = null);
 
 public sealed record AudioDeviceInfo(
     string Id,
@@ -91,9 +96,73 @@ public sealed record AudioDeviceInfo(
     bool IsMonitor = false)
 {
     public bool IsDuplex { get; }
+    public string CardId { get; init; }
+    public string StreamId { get; init; }
+    public string PortId { get; init; }
+    public string PortName { get; init; }
+    public string ControllerName { get; init; }
+    public string EffectiveStreamId { get; }
+    public string ActivePortId { get; init; }
+    public IReadOnlyList<AudioPortInfo> Ports { get; init; }
     public override string ToString();
 }
+
+public enum PinMode { Absent, Read, Write, ReadWrite }
+
+public enum PortAvailability { Unknown, Available, Unavailable }
+
+public sealed record AudioPinInfo(int Number, PinMode Mode, string Purpose = "");
+
+public sealed record AudioPortInfo(
+    string Id,
+    string Name,
+    AudioJackType JackType,
+    bool IsInput,
+    bool IsOutput,
+    PortAvailability Availability,
+    IReadOnlyList<AudioPinInfo> Pins,
+    string Notes = "")
+{
+    public bool IsDigital { get; }
+    public string DirectionSummary { get; }
+}
 ```
+
+`AudioPortRoute` и `AudioPortTopology.Build` собирают разъёмы из маршрутов
+драйвера. Совмещённые гнёзда (наушники + микрофон гарнитуры) объединяются по
+группе доступности; для 4-контактного гнезда выводятся контакты
+`W / W / — / R`, для обычного выхода или входа — `W / W / — / —` или
+`R / R / — / —`.
+
+```csharp
+public sealed record AudioInputSpecs(
+    string Kind,
+    bool IsInput,
+    bool IsOutput,
+    double? MaxVoltageRms,
+    double? MaxCurrentMa,
+    double? ImpedanceOhms,
+    double? MinFrequencyHz,
+    double? MaxFrequencyHz,
+    int? BitDepth,
+    string Notes);
+
+public static class AudioInputSpecsCatalog
+{
+    public static AudioInputSpecs For(
+        AudioJackType jackType,
+        bool isInput,
+        bool isOutput,
+        int? bitDepth);
+
+    public static string Describe(AudioInputSpecs specs);
+}
+```
+
+`AudioInputSpecsCatalog` подбирает ориентировочные параметры по типу разъёма:
+микрофонный/гарнитурный (0,1 В СКЗ, ~0,5 мА, ~2 кОм), линейный
+(2 В СКЗ, ~0,1 мА, ~10 кОм), выход (параметры входа неприменимы) и цифровой
+(аналоговые параметры неприменимы).
 
 ## Audio abstractions
 
@@ -130,6 +199,12 @@ public interface IAudioBackend
     bool IsAvailable { get; }
     IReadOnlyList<AudioDeviceInfo> EnumerateDevices();
     IAudioStream OpenStream(AudioStreamOptions options);
+}
+
+/// <summary>Переключение физического разъёма (PipeWire: pactl set-source-port/set-sink-port).</summary>
+public interface IAudioPortControl
+{
+    bool TrySelectPort(string deviceId, string portId, bool isInput, out string error);
 }
 
 public sealed class AudioBackendException : Exception
@@ -397,9 +472,14 @@ public sealed class InputBus : ISignalBus, IDisposable
 {
     public InputBus(string name, string deviceId, int physicalChannel, int sampleRate,
                     CalibrationProfile? calibration = null);
+    public InputBus(string name, int sampleRate, CalibrationProfile? calibration = null);
+
     public string DeviceId { get; }
     public int PhysicalChannel { get; }
+    public bool IsConnected { get; }
     public string Description { get; }
+
+    public void Connect(string deviceId, int physicalChannel);
     public void Configure(int sampleRate);
     public void Start();
     public void Stop();
@@ -423,11 +503,15 @@ public sealed class VirtualInputBus : ISignalBus, IDisposable
 public sealed class OutputBus
 {
     public OutputBus(string name, string deviceId, int physicalChannel);
+    public OutputBus(string name);
+
     public string DeviceId { get; }
     public int PhysicalChannel { get; }
+    public bool IsConnected { get; }
     public bool Enabled { get; set; }
     public double Gain { get; set; }
     public ModulationChain Modulation { get; }
+    public void Connect(string deviceId, int physicalChannel);
     public float[] GenerateMonoBlock(int sampleRate, int frames);
 }
 
@@ -460,18 +544,73 @@ public sealed class AudioEngine : IDisposable
     public event EventHandler? RoutesChanged;
     public void RefreshDevices();
     public InputBus AddInput(AudioDeviceInfo device, int physicalChannel, string? name = null);
+    public InputBus AddInput(string? name = null);
+    public void ReconnectInput(InputBus bus, AudioDeviceInfo device, int physicalChannel);
     public void RemoveInput(InputBus bus);
     public OutputBus AddOutput(AudioDeviceInfo device, int physicalChannel, string? name = null);
+    public OutputBus AddOutput(string? name = null);
+    public void ReconnectOutput(OutputBus bus, AudioDeviceInfo device, int physicalChannel);
     public void RemoveOutput(OutputBus bus);
     public VirtualInputBus AddVirtualInput(string? name, IEnumerable<FusionSource> sources, FusionMode mode);
     public void RemoveVirtualInput(VirtualInputBus bus);
     public void Start();
     public void Stop();
+    public bool IsRecording { get; }
+    public string? RecordingDirectory { get; }
+    public void StartRecording(string? name = null, IEnumerable<ISignalBus>? buses = null, bool includeOutputs = false);
+    public string? StopRecording();
     public string SaveMeasurement();
     public void SetBackend(IAudioBackend backend);
     public void Dispose();
 }
 ```
+
+## Recording / playback
+
+```csharp
+namespace VibroAnalyzer.Core.Recording;
+
+public sealed class RecordingTarget
+{
+    public static RecordingTarget ForBus(ISignalBus bus);
+    public static RecordingTarget ForOutput(OutputBus output);
+    public RecordingBusInfo Info { get; }
+}
+
+public sealed class SessionRecorder : IDisposable
+{
+    public SessionRecorder(string directory, int sampleRate, IEnumerable<RecordingTarget> targets);
+    public string Directory { get; }
+    public bool IsRecording { get; }
+    public void Start();
+    public string Stop();
+}
+
+namespace VibroAnalyzer.Core.Playback;
+
+public sealed class PlaybackSession : IDisposable
+{
+    public static PlaybackSession Load(string directory);
+    public string Directory { get; }
+    public string Name { get; }
+    public int SampleRate { get; }
+    public TimeSpan Duration { get; }
+    public TimeSpan Position { get; }
+    public double Speed { get; set; }
+    public bool IsPlaying { get; }
+    public IReadOnlyList<PlaybackBus> Buses { get; }
+    public void Play();
+    public void Pause();
+    public void Stop();
+    public void Seek(TimeSpan position);
+}
+
+public sealed class PlaybackBus : ISignalBus, IDisposable
+{
+    public string Kind { get; }
+}
+```
+
 
 Правила:
 - Изменять маршруты можно только при остановленном измерении.
@@ -505,12 +644,24 @@ public static class AudioBackendFactory
 - `MainWindow(AudioEngine engine, SessionContext session)`
   - управляет списком входов, выходов и виртуальных входов;
   - `OpenAnalyzerWindows(string specification)`, `StartMeasurement()`;
-  - `ConfigureDemoRouting()` для демонстрационного набора.
+  - `OpenSettingsAsync()`, `ConfigureDemoRouting()` для демонстрационного набора.
+- `SettingsWindow(bool demoEnabled, DemoSignalConfig config)` — демо-режим и
+  конструктор частот/колебаний.
+- `HelpWindow(AnalyzerHelp help, string? title = null)` — справка по клику.
 - `ScopeWindow(OscilloscopeAnalyzer analyzer, string? busName = null)`
 - `SpectrumWindow(SpectrumAnalyzer analyzer, string? busName = null)`
 - `ModulationWindow(ModulationChain modulation, string? busName = null)`
 - `DemodulationWindow(DemodulationChain demodulation, string? busName = null)`
+- `AnalyzerWindow(AnalyzerBase analyzer, string? busName = null)` — универсальное окно
+  с описанием, параметрами, показаниями и кнопкой «?».
+- `AnalyzerCatalogWindow(ISignalBus bus)` — категории и мини-описания.
+- `MixerWindow(IReadOnlyList<ISignalBus> sources)` — выбор конкретных каналов,
+  усиления и полосы.
 - `OverlayWindow(IReadOnlyList<ISignalBus> buses)` — наложение временных форм и спектров.
+- `ReplayWindow(PlaybackSession session)` — транспорт, перемотка и скорость.
+
+`OutputBus` также реализует `ISignalBus`, поэтому осциллограф, спектр и каталог
+анализаторов можно открывать для выходных (модулированных) сигналов.
 
 Окна анализаторов — отдельные `Window`. Для одной шины можно открыть несколько
 окон; каждое окно осциллографа/спектра создаёт собственный экземпляр анализатора
@@ -521,8 +672,10 @@ public static class AudioBackendFactory
 ```
 --session-dir <путь>       каталог сессии
 --module-id <id>           идентификатор модуля
---demo                     демо-бэкенд, 2 входа + 2 выхода + микшер
+--demo                     демо-бэкенд с конструктором по умолчанию
 --start                    сразу запустить измерение
+--settings                 открыть настройки при запуске
+--replay <папка>           открыть сохранённую запись
 --open=scope,spectrum,...  открыть окна для первой шины
 ```
 

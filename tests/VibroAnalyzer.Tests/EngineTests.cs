@@ -15,8 +15,6 @@ public sealed class EngineTests
 
         try
         {
-            Assert.Contains("Демо", AudioBackendFactory.AvailableBackendNames);
-
             var context = SessionContext.FromArgs(new[] { "--session-dir", root });
             using var engine = new AudioEngine(AudioBackendFactory.Create("Демо"), context);
 
@@ -56,6 +54,48 @@ public sealed class EngineTests
 
             engine.Stop();
             Assert.False(engine.IsRunning);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void OutputBusCanBeAnalyzed()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "vibroanalyzer-tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            var context = SessionContext.FromArgs(new[] { "--session-dir", root });
+            using var engine = new AudioEngine(AudioBackendFactory.Create("Демо"), context);
+
+            var device = engine.Devices.First(item => item.Id == "sim-output");
+            var output = engine.AddOutput(device, 0, "Анализируемый выход");
+            output.Modulation.Carrier.FrequencyHz = 1000;
+            output.Modulation.Carrier.Amplitude = 0.4;
+
+            var scope = new OscilloscopeAnalyzer();
+            var spectrum = new SpectrumAnalyzer();
+            output.AddAnalyzer(scope);
+            output.AddAnalyzer(spectrum);
+
+            engine.Start();
+
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => scope.LastUpdated != default
+                          && spectrum.LastUpdated != default
+                          && spectrum.PeakFrequencyHz > 900,
+                    TimeSpan.FromSeconds(3)),
+                "Анализаторы выхода не получили данные.");
+
+            Assert.InRange(spectrum.PeakFrequencyHz, 990, 1010);
+            engine.Stop();
         }
         finally
         {

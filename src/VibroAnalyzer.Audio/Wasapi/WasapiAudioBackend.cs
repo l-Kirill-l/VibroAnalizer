@@ -82,7 +82,7 @@ public sealed class WasapiAudioBackend : IAudioBackend
 
     private static void AddDevices(MMDeviceEnumerator enumerator, DataFlow flow, List<AudioDeviceInfo> target)
     {
-        var devices = enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active);
+        var devices = enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active | DeviceState.Unplugged);
         foreach (var device in devices)
         {
             try
@@ -98,6 +98,7 @@ public sealed class WasapiAudioBackend : IAudioBackend
                     : flow == DataFlow.Capture ? 1 : 2;
                 var sampleRate = mixFormat.SampleRate > 0 ? mixFormat.SampleRate : FallbackSampleRate;
                 var isInput = flow == DataFlow.Capture;
+                var jackType = ResolveJackType(device, isInput);
 
                 var channelInfos = new List<AudioChannelInfo>(channels);
                 for (var i = 0; i < channels; i++)
@@ -106,7 +107,7 @@ public sealed class WasapiAudioBackend : IAudioBackend
                         i,
                         $"Канал {i + 1}",
                         isInput,
-                        isInput ? AudioJackType.Microphone : AudioJackType.LineOut,
+                        jackType,
                         isInput ? "Вход WASAPI (формат микшера устройства)." : "Выход WASAPI (формат микшера устройства)."));
                 }
 
@@ -128,7 +129,12 @@ public sealed class WasapiAudioBackend : IAudioBackend
                         SupportsExclusiveMode: true,
                         SupportsLoopback: true,
                         SupportsChannelMapping: true,
-                        Notes: CreateNotes(isInput, sampleRate, channels, mixFormat.BitsPerSample))));
+                        Notes: CreateNotes(isInput, sampleRate, channels, mixFormat.BitsPerSample),
+                        MaxInputCurrentMa: 0.1,
+                        InputImpedanceOhms: 10000,
+                        MinFrequencyHz: 20,
+                        MaxFrequencyHz: Math.Min(20000, sampleRate * 0.5),
+                        BitDepth: mixFormat.BitsPerSample)));
             }
             catch
             {
@@ -146,6 +152,49 @@ public sealed class WasapiAudioBackend : IAudioBackend
                 }
             }
         }
+    }
+
+    private static AudioJackType ResolveJackType(MMDevice device, bool isInput)
+    {
+        try
+        {
+            if (device.Properties.TryGetValue<uint>(
+                    PropertyKeys.PKEY_AudioEndpoint_FormFactor,
+                    out var formFactor))
+            {
+                return MapFormFactor(formFactor, isInput);
+            }
+
+            if (device.Properties.TryGetValue<int>(
+                    PropertyKeys.PKEY_AudioEndpoint_FormFactor,
+                    out var rawFormFactor))
+            {
+                return MapFormFactor((uint)rawFormFactor, isInput);
+            }
+        }
+        catch
+        {
+            // Свойство может отсутствовать или быть недоступным.
+        }
+
+        return isInput ? AudioJackType.Microphone : AudioJackType.LineOut;
+    }
+
+    private static AudioJackType MapFormFactor(uint formFactor, bool isInput)
+    {
+        // EndpointFormFactor из Windows Core Audio.
+        return formFactor switch
+        {
+            0 => isInput ? AudioJackType.LineIn : AudioJackType.LineOut, // RemoteNetworkDevice
+            1 => AudioJackType.Speaker,
+            2 => isInput ? AudioJackType.LineIn : AudioJackType.LineOut, // LineLevel
+            3 => AudioJackType.Headphone,
+            4 => AudioJackType.Microphone,
+            5 => AudioJackType.Headset,
+            6 => isInput ? AudioJackType.Microphone : AudioJackType.Headphone, // Handset
+            7 or 8 or 9 => AudioJackType.Digital,
+            _ => isInput ? AudioJackType.Microphone : AudioJackType.LineOut,
+        };
     }
 
     private static string CreateNotes(bool isInput, int sampleRate, int channels, int bits)

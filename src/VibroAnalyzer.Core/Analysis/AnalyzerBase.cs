@@ -25,6 +25,15 @@ public abstract class AnalyzerBase
     /// <summary>Отображаемое название анализатора.</summary>
     public abstract string Title { get; }
 
+    /// <summary>Категория для каталога анализаторов.</summary>
+    public virtual string Category => "Общие измерения";
+
+    /// <summary>Краткое описание: как работает и для чего нужен.</summary>
+    public virtual string Description => "Описание анализатора не задано.";
+
+    /// <summary>Подробная справка с формулами и нюансами.</summary>
+    public virtual AnalyzerHelp Help => AnalyzerHelpCatalog.Get(GetType(), Description);
+
     /// <summary>Признак участия анализатора в обработке.</summary>
     public bool IsEnabled { get; set; } = true;
 

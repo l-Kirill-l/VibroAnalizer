@@ -190,7 +190,21 @@ public sealed class AnalyzerHost : IDisposable
                         continue;
                     }
 
+                    // Не отдаём анализатору ведущие нули незаполненного буфера.
+                    if (buffer.Count < frames)
+                    {
+                        continue;
+                    }
+
                     var data = buffer.Snapshot(frames, channel);
+                    for (var i = 0; i < data.Length; i++)
+                    {
+                        if (!double.IsFinite(data[i]))
+                        {
+                            data[i] = 0.0;
+                        }
+                    }
+
                     analyzer.Calibration = _calibration;
                     analyzer.Process(data, sampleRate);
                 }

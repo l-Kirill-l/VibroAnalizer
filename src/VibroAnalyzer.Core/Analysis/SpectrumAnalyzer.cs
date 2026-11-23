@@ -19,6 +19,14 @@ public sealed class SpectrumAnalyzer : AnalyzerBase
     /// <summary>Отображаемое название анализатора.</summary>
     public override string Title => "Спектр";
 
+    /// <summary>Категория анализатора.</summary>
+    public override string Category => "Частоты";
+
+    /// <summary>Назначение анализатора.</summary>
+    public override string Description =>
+        "Амплитудный спектр по БПФ с оконной функцией и усреднением: находит пики, гармоники "
+        + "и уровень шумовой дорожки. Подходит для акустики, вибрации, электрики и музыки.";
+
     /// <summary>Размер быстрого преобразования Фурье, отсчётов.</summary>
     public int FftSize { get; set; } = 8192;
 

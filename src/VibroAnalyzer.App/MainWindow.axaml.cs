@@ -1,18 +1,25 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using VibroAnalyzer.Audio;
+using VibroAnalyzer.Audio.Simulated;
 using VibroAnalyzer.Core.Analysis;
+using VibroAnalyzer.Core.Audio;
 using VibroAnalyzer.Core.Devices;
 using VibroAnalyzer.Core.Engine;
 using VibroAnalyzer.Core.Modulation;
+using VibroAnalyzer.Core.Playback;
 using VibroAnalyzer.Core.Routing;
 using VibroAnalyzer.Core.Session;
+using VibroAnalyzer.Core.Signals;
 
 namespace VibroAnalyzer.App;
 
@@ -41,10 +48,16 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _readoutTimer;
     private readonly List<(Window Window, object Bus)> _busWindows = new();
     private readonly List<Window> _overlayWindows = new();
+    private readonly List<(ChannelOption Channel, TextBlock Level)> _levelCells = new();
+    private IReadOnlyList<CardOption> _cards = Array.Empty<CardOption>();
+    private Guid? _connectionEditorBusId;
+    private bool _connectionEditorIsInput;
 
     private OscilloscopeAnalyzer? _summaryScope;
     private SpectrumAnalyzer? _summarySpectrum;
     private ISignalBus? _summaryBus;
+    private ISignalBus? _recordingBus;
+    private DemoSignalConfig _demoConfig = DemoSignalConfig.CreateDefault();
 
     private bool _ready;
     private bool _loading;
@@ -58,7 +71,11 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _readoutTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        _readoutTimer.Tick += (_, _) => UpdateReadout();
+        _readoutTimer.Tick += (_, _) =>
+        {
+            UpdateReadout();
+            UpdateInspectorLevels();
+        };
 
         Loaded += OnLoaded;
         Closing += OnClosing;
@@ -126,6 +143,16 @@ public partial class MainWindow : Window
                 case "наложение":
                     OpenOverlay();
                     break;
+
+                case "analyzers":
+                case "catalog":
+                case "каталог":
+                    if (firstInput is not null)
+                    {
+                        OpenAnalyzerCatalog(firstInput);
+                    }
+
+                    break;
             }
         }
     }
@@ -140,6 +167,7 @@ public partial class MainWindow : Window
         _ready = true;
 
         BackendCombo.ItemsSource = AudioBackendFactory.AvailableBackendNames;
+        BackendCombo.PlaceholderText = "Бэкенд";
         RateCombo.ItemsSource = SupportedRates;
         BufferCombo.ItemsSource = SupportedBuffers;
         MixModeCombo.ItemsSource = MixModes.Select(mode => mode.Title).ToArray();
@@ -147,9 +175,10 @@ public partial class MainWindow : Window
         BackendCombo.SelectionChanged += OnBackendChanged;
         RateCombo.SelectionChanged += OnRateChanged;
         BufferCombo.SelectionChanged += OnBufferChanged;
-        InputDeviceCombo.SelectionChanged += OnInputDeviceChanged;
-        OutputDeviceCombo.SelectionChanged += OnOutputDeviceChanged;
+        InspectorCardCombo.SelectionChanged += OnInspectorCardChanged;
+        InspectorPortCombo.SelectionChanged += OnInspectorPortChanged;
         RefreshButton.Click += OnRefreshDevices;
+        SettingsButton.Click += OnOpenSettings;
         StartButton.Click += OnStart;
         StopButton.Click += OnStop;
         SaveButton.Click += OnSave;
@@ -157,15 +186,18 @@ public partial class MainWindow : Window
         AddOutputButton.Click += OnAddOutput;
         AddMixerButton.Click += OnAddMixer;
         AddBandMergeButton.Click += OnAddBandMerge;
+        ConfiguredMixerButton.Click += OnAddConfiguredMixer;
         OverlayButton.Click += OnOpenOverlay;
+        RecordSessionButton.Click += OnToggleSessionRecording;
+        OpenRecordingButton.Click += OnOpenRecording;
 
         _engine.StatusChanged += OnEngineStatus;
         _engine.ErrorOccurred += OnEngineError;
         _engine.RoutesChanged += OnRoutesChanged;
 
         BindStaticValues();
-        RefreshDeviceCombos();
-        EnsureDefaultInput();
+        RefreshTopology();
+        EnsureDefaultSensor();
         RefreshRoutes();
         UpdateSessionInfo();
         UpdateButtons();
@@ -196,11 +228,14 @@ public partial class MainWindow : Window
         try
         {
             CloseAllBusWindows();
+            _connectionEditorBusId = null;
 
             if (_engine.IsRunning)
             {
                 _engine.Stop();
             }
+
+            _recordingBus = null;
 
             foreach (var virtualInput in _engine.VirtualInputs.ToList())
             {
@@ -267,12 +302,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool IsDemoBackend => _engine.Backend is SimulatedAudioBackend;
+
     private void BindStaticValues()
     {
         _loading = true;
         try
         {
-            BackendCombo.SelectedItem = _engine.Backend.Name;
+            BackendCombo.SelectedItem = IsDemoBackend ? null : _engine.Backend.Name;
             RateCombo.SelectedItem = SupportedRates.Contains(_engine.SampleRate)
                 ? _engine.SampleRate
                 : 48000;
@@ -280,6 +317,7 @@ public partial class MainWindow : Window
                 ? _engine.BufferFrames
                 : 1024;
             MixModeCombo.SelectedIndex = 0;
+            DemoBadge.IsVisible = IsDemoBackend;
         }
         finally
         {
@@ -287,79 +325,55 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RefreshDeviceCombos()
+    private void RefreshTopology()
     {
+        var previousCardId = (InspectorCardCombo.SelectedItem as CardOption)?.Id;
+        var previousPortKey = (InspectorPortCombo.SelectedItem as PortOption)?.Key;
+
+        _cards = AudioTopologyView.Build(_engine.Devices);
+
         _loading = true;
         try
         {
-            var inputs = _engine.Devices.Where(device => device.IsInput).ToList();
-            var outputs = _engine.Devices.Where(device => device.IsOutput).ToList();
-
-            InputDeviceCombo.ItemsSource = inputs;
-            OutputDeviceCombo.ItemsSource = outputs;
-
-            InputDeviceCombo.SelectedItem = inputs.FirstOrDefault(device => !device.IsMonitor)
-                                             ?? inputs.FirstOrDefault();
-            OutputDeviceCombo.SelectedItem = outputs.FirstOrDefault(device => !device.IsMonitor)
-                                              ?? outputs.FirstOrDefault();
-
-            UpdateChannelLimits();
+            InspectorCardCombo.ItemsSource = _cards;
+            InspectorCardCombo.SelectedItem = _cards.FirstOrDefault(card => card.Id == previousCardId)
+                                               ?? _cards.FirstOrDefault();
+            PopulateInspectorPorts(previousPortKey);
         }
         finally
         {
             _loading = false;
         }
 
-        UpdateDeviceInfo();
+        RefreshInspector();
     }
 
-    private void UpdateChannelLimits()
+    private void PopulateInspectorPorts(string? preferredKey = null)
     {
-        if (InputDeviceCombo.SelectedItem is AudioDeviceInfo input)
-        {
-            var maximum = Math.Max(0, input.InputChannels - 1);
-            InputChannelBox.Maximum = maximum;
-            if (ReadChannel(InputChannelBox) > maximum)
-            {
-                InputChannelBox.Value = maximum;
-            }
-        }
+        var card = InspectorCardCombo.SelectedItem as CardOption;
+        var ports = card is null
+            ? Array.Empty<PortOption>()
+            : card.Inputs.Concat(card.Outputs).ToArray();
 
-        if (OutputDeviceCombo.SelectedItem is AudioDeviceInfo output)
-        {
-            var maximum = Math.Max(0, output.OutputChannels - 1);
-            OutputChannelBox.Maximum = maximum;
-            if (ReadChannel(OutputChannelBox) > maximum)
-            {
-                OutputChannelBox.Value = maximum;
-            }
-        }
+        InspectorPortCombo.ItemsSource = ports;
+        InspectorPortCombo.SelectedItem = ports.FirstOrDefault(port => port.Key == preferredKey)
+                                          ?? ports.FirstOrDefault();
     }
 
-    private static int ReadChannel(NumericUpDown box)
-        => box.Value is decimal value ? (int)value : 0;
-
-    private void EnsureDefaultInput()
+    private void EnsureDefaultSensor()
     {
         if (_engine.Inputs.Count > 0 || _engine.VirtualInputs.Count > 0)
         {
             return;
         }
 
-        if (InputDeviceCombo.SelectedItem is not AudioDeviceInfo device
-            || !device.IsInput
-            || device.InputChannels <= 0)
-        {
-            return;
-        }
-
         try
         {
-            _engine.AddInput(device, 0);
+            _engine.AddInput("Датчик 1");
         }
         catch (Exception ex)
         {
-            ShowError($"Не удалось создать вход по умолчанию: {ex.Message}");
+            ShowError($"Не удалось создать датчик по умолчанию: {ex.Message}");
         }
     }
 
@@ -416,8 +430,15 @@ public partial class MainWindow : Window
             VirtualPanel.Children.Add(BuildEmptyHint("Микшеры ещё не созданы."));
         }
 
-        UpdateDeviceInfo();
+        InputsPanel.InvalidateMeasure();
+        OutputsPanel.InvalidateMeasure();
+        InputsPanel.InvalidateArrange();
+        OutputsPanel.InvalidateArrange();
+
+        RefreshInspector();
         UpdateButtons();
+        UpdateRecordingUi();
+        UpdateDemoBadge();
         UpdateReadout();
     }
 
@@ -428,28 +449,39 @@ public partial class MainWindow : Window
         return block;
     }
 
-    private Border BuildInputRow(InputBus bus)
+    private Control BuildInputRow(InputBus bus)
     {
-        var device = _engine.Devices.FirstOrDefault(item => item.Id == bus.DeviceId);
-        var subtitle = $"{device?.Name ?? bus.DeviceId} · {bus.Description} · "
+        var subtitle = $"{DescribeConnection(bus.DeviceId, bus.PhysicalChannel, isInput: true)} · "
                        + $"демодуляция: {DescribeDemodulation(bus.Demodulation.Kind)}";
 
+        var connect = SmallButton("Подключение", (_, _) => OpenConnectionEditor(bus.Id, isInput: true));
         var scope = SmallButton("Осциллограф", (_, _) => OpenScope(bus));
         var spectrum = SmallButton("Спектр", (_, _) => OpenSpectrum(bus));
+        var analyzers = SmallButton("Анализаторы", (_, _) => OpenAnalyzerCatalog(bus));
         var demodulation = SmallButton("Демодуляция", (_, _) => OpenDemodulation(bus));
+        var record = CreateRecordButton(bus);
         var remove = SmallButton("Удалить", (_, _) => RemoveRoute(bus));
         remove.Classes.Add("danger");
         remove.IsEnabled = !_engine.IsRunning;
 
-        return CreateRouteRow(bus.Name, subtitle, scope, spectrum, demodulation, remove);
+        var row = CreateRouteRow(bus.Name, subtitle, connect, scope, spectrum, analyzers, demodulation, record, remove);
+        if (_connectionEditorBusId != bus.Id || !_connectionEditorIsInput)
+        {
+            return row;
+        }
+
+        var panel = new StackPanel { Spacing = 6 };
+        panel.Children.Add(row);
+        panel.Children.Add(BuildConnectionEditor(inputBus: bus, outputBus: null));
+        return panel;
     }
 
-    private Border BuildOutputRow(OutputBus bus)
+    private Control BuildOutputRow(OutputBus bus)
     {
-        var device = _engine.Devices.FirstOrDefault(item => item.Id == bus.DeviceId);
-        var subtitle = $"{device?.Name ?? bus.DeviceId} · {bus.Description} · "
+        var subtitle = $"{DescribeConnection(bus.DeviceId, bus.PhysicalChannel, isInput: false)} · "
                        + $"несущая {bus.Modulation.Carrier.FrequencyHz:0} Гц";
 
+        var connect = SmallButton("Подключение", (_, _) => OpenConnectionEditor(bus.Id, isInput: false));
         var enabled = new CheckBox
         {
             Content = "Вкл",
@@ -459,23 +491,37 @@ public partial class MainWindow : Window
         enabled.IsCheckedChanged += (_, _) => bus.Enabled = enabled.IsChecked == true;
 
         var modulation = SmallButton("Модуляция", (_, _) => OpenModulation(bus));
+        var scope = SmallButton("Осциллограф", (_, _) => OpenScope(bus));
+        var spectrum = SmallButton("Спектр", (_, _) => OpenSpectrum(bus));
+        var analyzers = SmallButton("Анализаторы", (_, _) => OpenAnalyzerCatalog(bus));
         var remove = SmallButton("Удалить", (_, _) => RemoveRoute(bus));
         remove.Classes.Add("danger");
         remove.IsEnabled = !_engine.IsRunning;
 
-        return CreateRouteRow(bus.Name, subtitle, enabled, modulation, remove);
+        var row = CreateRouteRow(bus.Name, subtitle, connect, enabled, modulation, scope, spectrum, analyzers, remove);
+        if (_connectionEditorBusId != bus.Id || _connectionEditorIsInput)
+        {
+            return row;
+        }
+
+        var panel = new StackPanel { Spacing = 6 };
+        panel.Children.Add(row);
+        panel.Children.Add(BuildConnectionEditor(inputBus: null, outputBus: bus));
+        return panel;
     }
 
     private Border BuildVirtualRow(VirtualInputBus bus)
     {
         var scope = SmallButton("Осциллограф", (_, _) => OpenScope(bus));
         var spectrum = SmallButton("Спектр", (_, _) => OpenSpectrum(bus));
+        var analyzers = SmallButton("Анализаторы", (_, _) => OpenAnalyzerCatalog(bus));
         var demodulation = SmallButton("Демодуляция", (_, _) => OpenDemodulation(bus));
+        var record = CreateRecordButton(bus);
         var remove = SmallButton("Удалить", (_, _) => RemoveRoute(bus));
         remove.Classes.Add("danger");
         remove.IsEnabled = !_engine.IsRunning;
 
-        return CreateRouteRow(bus.Name, bus.Description, scope, spectrum, demodulation, remove);
+        return CreateRouteRow(bus.Name, bus.Description, scope, spectrum, analyzers, demodulation, record, remove);
     }
 
     private static Border CreateRouteRow(string title, string subtitle, params Control[] actions)
@@ -522,6 +568,20 @@ public partial class MainWindow : Window
         return button;
     }
 
+    private Button CreateRecordButton(ISignalBus bus)
+    {
+        var active = _engine.IsRecording && ReferenceEquals(_recordingBus, bus);
+        var button = SmallButton(active ? "Стоп запись" : "Запись", (_, _) => ToggleBusRecording(bus));
+        button.IsEnabled = _engine.IsRunning && (!_engine.IsRecording || active);
+
+        if (active)
+        {
+            button.Classes.Add("danger");
+        }
+
+        return button;
+    }
+
     private static string DescribeDemodulation(DemodulationKind kind) => kind switch
     {
         DemodulationKind.Envelope => "огибающая",
@@ -531,7 +591,7 @@ public partial class MainWindow : Window
 
     private void OnBackendChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_loading || BackendCombo.SelectedItem is not string backendName)
+        if (_loading || IsDemoBackend || BackendCombo.SelectedItem is not string backendName)
         {
             return;
         }
@@ -540,8 +600,9 @@ public partial class MainWindow : Window
         {
             CloseAllBusWindows();
             _engine.SetBackend(AudioBackendFactory.Create(backendName));
-            RefreshDeviceCombos();
-            EnsureDefaultInput();
+            _recordingBus = null;
+            RefreshTopology();
+            EnsureDefaultSensor();
             RefreshRoutes();
             ShowStatus($"Бэкенд переключён: {backendName}. Маршруты сброшены.");
         }
@@ -554,31 +615,89 @@ public partial class MainWindow : Window
     private void OnRefreshDevices(object? sender, RoutedEventArgs e)
     {
         _engine.RefreshDevices();
-        RefreshDeviceCombos();
+        RefreshTopology();
         RefreshRoutes();
         ShowStatus("Список устройств обновлён.");
     }
 
-    private void OnInputDeviceChanged(object? sender, SelectionChangedEventArgs e)
+    private async void OnOpenSettings(object? sender, RoutedEventArgs e)
     {
-        if (_loading)
-        {
-            return;
-        }
-
-        UpdateChannelLimits();
-        UpdateDeviceInfo();
+        await OpenSettingsAsync();
     }
 
-    private void OnOutputDeviceChanged(object? sender, SelectionChangedEventArgs e)
+    /// <summary>Открывает окно настроек и применяет выбранный режим.</summary>
+    public async Task OpenSettingsAsync()
     {
-        if (_loading)
+        var dialog = new SettingsWindow(IsDemoBackend, _demoConfig.Clone());
+        var result = await dialog.ShowDialog<SettingsResult?>(this);
+
+        if (result is null)
         {
             return;
         }
 
-        UpdateChannelLimits();
-        UpdateDeviceInfo();
+        _demoConfig = result.DemoConfig;
+        ApplyDemoMode(result.DemoEnabled);
+    }
+
+    private void ApplyDemoMode(bool enabled)
+    {
+        try
+        {
+            CloseAllBusWindows();
+
+            if (enabled)
+            {
+                _engine.SetBackend(new SimulatedAudioBackend(_demoConfig));
+                RefreshTopology();
+                ConfigureDemoRouting();
+                ShowStatus("Демо-режим включён: используется сигнал конструктора.");
+            }
+            else
+            {
+                if (IsDemoBackend)
+                {
+                    _engine.SetBackend(AudioBackendFactory.Create());
+                    RefreshTopology();
+                    EnsureDefaultSensor();
+                    ShowStatus("Демо-режим выключен: используются реальные устройства.");
+                }
+                else
+                {
+                    ShowStatus("Настройки сохранены.");
+                }
+            }
+
+            _recordingBus = null;
+            RefreshRoutes();
+            UpdateButtons();
+            UpdateDemoBadge();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Не удалось применить настройки: {ex.Message}");
+        }
+    }
+
+    private void UpdateDemoBadge()
+    {
+        DemoBadge.IsVisible = IsDemoBackend;
+        BackendCombo.PlaceholderText = IsDemoBackend ? "Демо-режим" : "Бэкенд";
+
+        _loading = true;
+        try
+        {
+            var names = AudioBackendFactory.AvailableBackendNames;
+            BackendCombo.SelectedItem = IsDemoBackend
+                ? null
+                : names.Contains(_engine.Backend.Name) ? _engine.Backend.Name : null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        BackendCombo.IsEnabled = !IsDemoBackend && !_engine.IsRunning;
     }
 
     private void OnRateChanged(object? sender, SelectionChangedEventArgs e)
@@ -605,33 +724,27 @@ public partial class MainWindow : Window
 
     private void OnAddInput(object? sender, RoutedEventArgs e)
     {
-        if (InputDeviceCombo.SelectedItem is not AudioDeviceInfo device)
-        {
-            ShowError("Выберите устройство входа.");
-            return;
-        }
-
         try
         {
-            _engine.AddInput(device, ReadChannel(InputChannelBox));
+            var bus = _engine.AddInput();
+            _connectionEditorBusId = bus.Id;
+            _connectionEditorIsInput = true;
+            RefreshRoutes();
         }
         catch (Exception ex)
         {
-            ShowError($"Не удалось добавить вход: {ex.Message}");
+            ShowError($"Не удалось добавить датчик: {ex.Message}");
         }
     }
 
     private void OnAddOutput(object? sender, RoutedEventArgs e)
     {
-        if (OutputDeviceCombo.SelectedItem is not AudioDeviceInfo device)
-        {
-            ShowError("Выберите устройство выхода.");
-            return;
-        }
-
         try
         {
-            _engine.AddOutput(device, ReadChannel(OutputChannelBox));
+            var bus = _engine.AddOutput();
+            _connectionEditorBusId = bus.Id;
+            _connectionEditorIsInput = false;
+            RefreshRoutes();
         }
         catch (Exception ex)
         {
@@ -692,6 +805,38 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnAddConfiguredMixer(object? sender, RoutedEventArgs e)
+    {
+        var buses = _engine.Inputs
+            .Cast<ISignalBus>()
+            .Concat(_engine.VirtualInputs)
+            .ToList();
+
+        if (buses.Count == 0)
+        {
+            ShowError("Сначала добавьте хотя бы один вход.");
+            return;
+        }
+
+        var dialog = new MixerWindow(buses);
+        var selection = await dialog.ShowDialog<MixerSelection?>(this);
+
+        if (selection is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _engine.AddVirtualInput(null, selection.Sources, selection.Mode);
+            ShowStatus("Виртуальный вход создан.");
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Не удалось создать микшер: {ex.Message}");
+        }
+    }
+
     private void RemoveRoute(object bus)
     {
         try
@@ -736,6 +881,12 @@ public partial class MainWindow : Window
 
         var window = new SpectrumWindow(analyzer, bus.Name);
         window.Closed += (_, _) => bus.RemoveAnalyzer(analyzer);
+        RegisterWindow(window, bus);
+    }
+
+    private void OpenAnalyzerCatalog(ISignalBus bus)
+    {
+        var window = new AnalyzerCatalogWindow(bus);
         RegisterWindow(window, bus);
     }
 
@@ -884,9 +1035,11 @@ public partial class MainWindow : Window
     private void OnStop(object? sender, RoutedEventArgs e)
     {
         _engine.Stop();
+        _recordingBus = null;
         ShowStatus("Измерение остановлено.");
         RefreshRoutes();
         UpdateButtons();
+        UpdateRecordingUi();
         UpdateReadout();
     }
 
@@ -901,6 +1054,125 @@ public partial class MainWindow : Window
         {
             ShowError($"Не удалось сохранить отчёт: {ex.Message}");
         }
+    }
+
+    private void OnToggleSessionRecording(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_engine.IsRecording)
+            {
+                var path = _engine.StopRecording();
+                _recordingBus = null;
+                ShowStatus(path is null ? "Запись остановлена." : $"Запись сохранена: {path}");
+            }
+            else
+            {
+                _engine.StartRecording(
+                    $"session-{DateTime.Now:HH-mm-ss}",
+                    includeOutputs: true);
+                _recordingBus = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Запись: {ex.Message}");
+        }
+
+        RefreshRoutes();
+        UpdateButtons();
+        UpdateRecordingUi();
+    }
+
+    private void ToggleBusRecording(ISignalBus bus)
+    {
+        try
+        {
+            if (_engine.IsRecording)
+            {
+                var path = _engine.StopRecording();
+                _recordingBus = null;
+                ShowStatus(path is null ? "Запись остановлена." : $"Запись сохранена: {path}");
+            }
+            else
+            {
+                _engine.StartRecording(
+                    $"bus-{bus.Name}",
+                    new[] { bus },
+                    includeOutputs: false);
+                _recordingBus = bus;
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Запись: {ex.Message}");
+        }
+
+        RefreshRoutes();
+        UpdateButtons();
+        UpdateRecordingUi();
+    }
+
+    private async void OnOpenRecording(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Выберите папку записи",
+                AllowMultiple = false,
+            });
+
+            if (folders.Count == 0)
+            {
+                return;
+            }
+
+            var path = folders[0].TryGetLocalPath();
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                ShowError("Не удалось получить путь к выбранной папке.");
+                return;
+            }
+
+            OpenReplay(path);
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Не удалось открыть запись: {ex.Message}");
+        }
+    }
+
+    /// <summary>Открывает сохранённую запись в окне просмотра.</summary>
+    public void OpenReplay(string directory)
+    {
+        try
+        {
+            var session = PlaybackSession.Load(directory);
+            new ReplayWindow(session).Show(this);
+            ShowStatus($"Открыта запись: {session.Name}");
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Не удалось открыть запись: {ex.Message}");
+        }
+    }
+
+    private void UpdateRecordingUi()
+    {
+        if (RecordSessionButton is null)
+        {
+            return;
+        }
+
+        var recording = _engine.IsRecording;
+        RecordSessionButton.Content = recording ? "Остановить запись" : "Записать сессию";
+        RecordSessionButton.Classes.Set("primary", !recording);
+        RecordSessionButton.Classes.Set("danger", recording);
+
+        RecordingStatusText.Text = recording
+            ? $"Идёт запись: {_engine.RecordingDirectory}"
+            : "Запись не ведётся.";
     }
 
     private void OnEngineStatus(object? sender, string message)
@@ -946,82 +1218,609 @@ public partial class MainWindow : Window
         StartButton.IsEnabled = idle;
         StopButton.IsEnabled = !idle;
         SaveButton.IsEnabled = true;
+        RecordSessionButton.IsEnabled = _engine.IsRunning || _engine.IsRecording;
+        OpenRecordingButton.IsEnabled = true;
 
         AddInputButton.IsEnabled = idle;
         AddOutputButton.IsEnabled = idle;
         AddMixerButton.IsEnabled = idle;
         AddBandMergeButton.IsEnabled = idle;
+        ConfiguredMixerButton.IsEnabled = idle;
         OverlayButton.IsEnabled = _engine.Inputs.Count + _engine.VirtualInputs.Count > 0;
 
-        BackendCombo.IsEnabled = idle;
+        BackendCombo.IsEnabled = idle && !IsDemoBackend;
         RateCombo.IsEnabled = idle;
         BufferCombo.IsEnabled = idle;
-        InputDeviceCombo.IsEnabled = idle;
-        OutputDeviceCombo.IsEnabled = idle;
-        InputChannelBox.IsEnabled = idle;
-        OutputChannelBox.IsEnabled = idle;
     }
 
-    private void UpdateDeviceInfo()
+    private void OpenConnectionEditor(Guid busId, bool isInput)
     {
-        var input = InputDeviceCombo.SelectedItem as AudioDeviceInfo;
-        var output = OutputDeviceCombo.SelectedItem as AudioDeviceInfo;
-
-        if (input is null && output is null)
+        if (_engine.IsRunning)
         {
-            InfoText.Text = "Устройства не найдены. Проверьте подключение и выберите бэкенд.";
+            ShowStatus("Остановите измерение перед изменением подключения.");
             return;
         }
 
-        var lines = new List<string>();
-
-        if (input is not null)
-        {
-            lines.Add($"Вход: {input.Name}");
-            lines.Add($"  каналов: {input.InputChannels}, частота по умолчанию: {input.DefaultSampleRate} Гц");
-            lines.Add($"  возможности: {DescribeCapabilities(input.Capabilities)}");
-
-            if (input.IsMonitor)
-            {
-                lines.Add("  ! это монитор выхода: сигнал взят из петли, а не с внешнего входа.");
-            }
-        }
-
-        if (output is not null)
-        {
-            if (lines.Count > 0)
-            {
-                lines.Add("");
-            }
-
-            lines.Add($"Выход: {output.Name}");
-            lines.Add($"  каналов: {output.OutputChannels}, частота по умолчанию: {output.DefaultSampleRate} Гц");
-            lines.Add($"  возможности: {DescribeCapabilities(output.Capabilities)}");
-        }
-
-        InfoText.Text = string.Join(Environment.NewLine, lines);
+        _connectionEditorBusId = busId;
+        _connectionEditorIsInput = isInput;
+        RefreshRoutes();
     }
 
-    private static string DescribeCapabilities(DeviceCapabilities capabilities)
+    private void CloseConnectionEditor()
     {
-        var parts = new List<string>
+        _connectionEditorBusId = null;
+        RefreshRoutes();
+    }
+
+    private AudioDeviceInfo? FindDevice(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
         {
-            capabilities.SupportsDuplex ? "дуплекс" : "не дуплекс",
-            capabilities.IsAcCoupled ? "AC-связь" : "DC-связь",
-            capabilities.SupportsExclusiveMode ? "эксклюзивный режим" : "общий режим",
+            return null;
+        }
+
+        return _engine.Devices.FirstOrDefault(device =>
+            string.Equals(device.Id, deviceId, StringComparison.Ordinal));
+    }
+
+    private string DescribeConnection(string deviceId, int physicalChannel, bool isInput)
+    {
+        var device = FindDevice(deviceId);
+        if (device is null)
+        {
+            return "не подключён";
+        }
+
+        var controller = string.IsNullOrWhiteSpace(device.ControllerName)
+            ? device.Name
+            : device.ControllerName;
+        var port = string.IsNullOrWhiteSpace(device.PortName)
+            ? "устройство"
+            : device.PortName;
+        var channel = DescribeBusChannel(device, physicalChannel, isInput);
+        return $"{controller} · {port} · {channel}";
+    }
+
+    private static string DescribeBusChannel(
+        AudioDeviceInfo device,
+        int physicalChannel,
+        bool isInput)
+    {
+        var count = isInput ? device.InputChannels : device.OutputChannels;
+        if (count <= 1)
+        {
+            return "моно";
+        }
+
+        if (count == 2)
+        {
+            return physicalChannel == 0 ? "левый" : "правый";
+        }
+
+        return $"канал {physicalChannel + 1}";
+    }
+
+    private Control BuildConnectionEditor(InputBus? inputBus, OutputBus? outputBus)
+    {
+        var isInput = inputBus is not null;
+        var currentDevice = FindDevice(isInput ? inputBus!.DeviceId : outputBus!.DeviceId);
+        var currentChannel = isInput ? inputBus!.PhysicalChannel : outputBus!.PhysicalChannel;
+
+        var cards = _cards
+            .Where(card => (isInput ? card.Inputs.Count : card.Outputs.Count) > 0)
+            .ToList();
+
+        var cardCombo = new ComboBox
+        {
+            ItemsSource = cards,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            PlaceholderText = "Карта",
+        };
+        var portCombo = new ComboBox
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            PlaceholderText = "Порт",
+        };
+        var channelCombo = new ComboBox
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            PlaceholderText = "Канал",
         };
 
-        if (capabilities.MaxInputVoltageRms is { } volts)
+        var loading = false;
+
+        void SetChannels(PortOption? port, int preferredChannel = -1)
         {
-            parts.Add($"до {volts:0.###} В СКЗ");
+            var channels = port?.Channels ?? Array.Empty<ChannelOption>();
+            channelCombo.ItemsSource = channels;
+            channelCombo.SelectedItem = channels.FirstOrDefault(channel => channel.Index == preferredChannel)
+                                        ?? channels.FirstOrDefault();
+            channelCombo.IsEnabled = channels.Count > 1;
         }
 
-        if (!string.IsNullOrWhiteSpace(capabilities.Notes))
+        void SetPorts(CardOption? card, AudioDeviceInfo? preferredDevice, int preferredChannel)
         {
-            parts.Add(capabilities.Notes);
+            var ports = card is null
+                ? Array.Empty<PortOption>()
+                : (isInput ? card.Inputs : card.Outputs).ToArray();
+            portCombo.ItemsSource = ports;
+
+            var preferredPort = preferredDevice is null
+                ? null
+                : ports.FirstOrDefault(port => port.Device.Id == preferredDevice.Id);
+            var selectedPort = preferredPort ?? ports.FirstOrDefault();
+            portCombo.SelectedItem = selectedPort;
+            SetChannels(selectedPort, preferredPort is null ? -1 : preferredChannel);
         }
 
-        return string.Join(", ", parts);
+        cardCombo.SelectionChanged += (_, _) =>
+        {
+            if (loading)
+            {
+                return;
+            }
+
+            loading = true;
+            SetPorts(cardCombo.SelectedItem as CardOption, null, -1);
+            loading = false;
+        };
+
+        portCombo.SelectionChanged += (_, _) =>
+        {
+            if (loading)
+            {
+                return;
+            }
+
+            loading = true;
+            SetChannels(portCombo.SelectedItem as PortOption);
+            loading = false;
+        };
+
+        var cardKey = currentDevice is null
+            ? null
+            : string.IsNullOrWhiteSpace(currentDevice.CardId)
+                ? currentDevice.Id
+                : currentDevice.CardId;
+        var initialCard = cards.FirstOrDefault(card => card.Id == cardKey) ?? cards.FirstOrDefault();
+
+        loading = true;
+        cardCombo.SelectedItem = initialCard;
+        SetPorts(initialCard, currentDevice, currentChannel);
+        loading = false;
+
+        var findButton = SmallButton("Найти сигнал", (_, _) =>
+        {
+            if (!isInput)
+            {
+                return;
+            }
+
+            OpenFindSignalWindow(selection =>
+            {
+                loading = true;
+                cardCombo.SelectedItem = selection.Card;
+                SetPorts(selection.Card, selection.Port.Device, selection.Channel.Index);
+                portCombo.SelectedItem = selection.Port;
+                SetChannels(selection.Port, selection.Channel.Index);
+                channelCombo.SelectedItem = selection.Channel;
+                loading = false;
+            });
+        });
+
+        var showButton = SmallButton("Показать каналы", (_, _) =>
+        {
+            if (portCombo.SelectedItem is PortOption port)
+            {
+                SelectInspector(port);
+            }
+        });
+
+        var applyButton = SmallButton("Применить", (_, _) =>
+        {
+            if (channelCombo.SelectedItem is not ChannelOption channel)
+            {
+                ShowError("Выберите канал.");
+                return;
+            }
+
+            ApplyConnection(inputBus, outputBus, channel, isInput);
+        });
+        applyButton.Classes.Add("primary");
+
+        var cancelButton = SmallButton("Отмена", (_, _) => CloseConnectionEditor());
+
+        var columns = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*,110"),
+            ColumnSpacing = 8,
+        };
+
+        AddEditorColumn(columns, 0, "КАРТА", cardCombo);
+        AddEditorColumn(columns, 1, "ПОРТ", portCombo);
+        AddEditorColumn(columns, 2, "КАНАЛ", channelCombo);
+
+        var buttons = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 6, 0, 0),
+        };
+
+        var actions = new List<Button> { findButton, showButton, applyButton, cancelButton };
+        foreach (var button in actions)
+        {
+            button.Margin = new Thickness(0, 0, 6, 0);
+            buttons.Children.Add(button);
+        }
+
+        if (!isInput)
+        {
+            findButton.IsVisible = false;
+        }
+
+        var stack = new StackPanel { Spacing = 6 };
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Выберите карту, затем порт и канал. Список каналов зависит от порта.",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(Color.Parse("#798793")),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        stack.Children.Add(columns);
+        stack.Children.Add(buttons);
+
+        var panel = new Border { Child = stack, Margin = new Thickness(14, 2, 14, 4) };
+        panel.Classes.Add("route");
+        return panel;
+    }
+
+    private static void AddEditorColumn(Grid grid, int column, string label, Control control)
+    {
+        var stack = new StackPanel { Spacing = 2 };
+        var text = new TextBlock { Text = label };
+        text.Classes.Add("label");
+        stack.Children.Add(text);
+        stack.Children.Add(control);
+        Grid.SetColumn(stack, column);
+        grid.Children.Add(stack);
+    }
+
+    private void ApplyConnection(
+        InputBus? inputBus,
+        OutputBus? outputBus,
+        ChannelOption channel,
+        bool isInput)
+    {
+        if (_engine.IsRunning)
+        {
+            ShowStatus("Остановите измерение перед изменением подключения.");
+            return;
+        }
+
+        try
+        {
+            var device = channel.Device;
+            if (!string.IsNullOrWhiteSpace(device.PortId)
+                && _engine.Backend is IAudioPortControl control
+                && !control.TrySelectPort(
+                    device.EffectiveStreamId,
+                    device.PortId,
+                    isInput,
+                    out var error))
+            {
+                ShowError($"Не удалось активировать порт: {error}");
+                return;
+            }
+
+            if (isInput)
+            {
+                _engine.ReconnectInput(inputBus!, device, channel.PhysicalChannel);
+            }
+            else
+            {
+                _engine.ReconnectOutput(outputBus!, device, channel.PhysicalChannel);
+            }
+
+            _connectionEditorBusId = null;
+            _engine.RefreshDevices();
+            RefreshTopology();
+            RefreshRoutes();
+            ShowStatus($"Подключено: {DescribeConnection(device.Id, channel.PhysicalChannel, isInput)}");
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Не удалось подключить канал: {ex.Message}");
+        }
+    }
+
+    private void OnInspectorCardChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            PopulateInspectorPorts();
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        RefreshInspector();
+    }
+
+    private void OnInspectorPortChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        RefreshInspector();
+    }
+
+    private void SelectInspector(PortOption port)
+    {
+        var card = _cards.FirstOrDefault(item =>
+            item.Inputs.Contains(port) || item.Outputs.Contains(port));
+        if (card is null)
+        {
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            InspectorCardCombo.SelectedItem = card;
+            PopulateInspectorPorts(port.Key);
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        RefreshInspector();
+    }
+
+    private void RefreshInspector()
+    {
+        var card = InspectorCardCombo.SelectedItem as CardOption;
+        var port = InspectorPortCombo.SelectedItem as PortOption;
+
+        if (card is null || port is null)
+        {
+            InspectorInfoText.Text = "Нет доступных карт и портов.";
+            ChannelTable.Children.Clear();
+            ChannelTable.RowDefinitions.Clear();
+            _levelCells.Clear();
+            PortHintText.Text = "";
+            return;
+        }
+
+        var availability = port.Availability == PortAvailability.Unavailable
+            ? " · не подключён"
+            : string.Empty;
+        InspectorInfoText.Text = $"{card.Name} · {port.Name} · {port.Direction} · "
+                                 + $"{port.ChannelCount} кан.{availability}";
+        var specs = AudioInputSpecsCatalog.For(
+            port.JackType,
+            port.IsInput,
+            port.IsOutput,
+            port.Device.Capabilities.BitDepth);
+        PortHintText.Text = DescribePortHint(port)
+                            + Environment.NewLine
+                            + AudioInputSpecsCatalog.Describe(specs);
+        BuildChannelTable(port);
+    }
+
+    private void BuildChannelTable(PortOption port)
+    {
+        ChannelTable.Children.Clear();
+        ChannelTable.RowDefinitions.Clear();
+        _levelCells.Clear();
+
+        var rowCount = port.Channels.Count + 1;
+        for (var index = 0; index < rowCount; index++)
+        {
+            ChannelTable.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        }
+
+        AddTableHeaderCell(0, 0, "КАНАЛ");
+        AddTableHeaderCell(0, 1, "НАЗНАЧЕНИЕ");
+        AddTableHeaderCell(0, 2, "ИСПОЛЬЗУЕТСЯ");
+        AddTableHeaderCell(0, 3, "УРОВЕНЬ");
+
+        for (var index = 0; index < port.Channels.Count; index++)
+        {
+            var channel = port.Channels[index];
+            var usedBy = GetUsedBy(channel);
+            var row = index + 1;
+
+            AddTableCell(row, 0, (channel.Index + 1).ToString());
+            AddTableCell(row, 1, channel.Purpose);
+            AddTableCell(row, 2, usedBy.Count == 0 ? "—" : string.Join(", ", usedBy));
+
+            var level = new TextBlock
+            {
+                Text = FormatLevel(GetChannelRms(channel)),
+                FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Liberation Mono, DejaVu Sans Mono"),
+                FontSize = 10.5,
+                Foreground = new SolidColorBrush(Color.Parse("#B7C3CF")),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var levelBorder = new Border { Child = level };
+            levelBorder.Classes.Add("pin");
+            Grid.SetRow(levelBorder, row);
+            Grid.SetColumn(levelBorder, 3);
+            ChannelTable.Children.Add(levelBorder);
+            _levelCells.Add((channel, level));
+        }
+    }
+
+    private void AddTableHeaderCell(int row, int column, string text)
+    {
+        var block = new TextBlock
+        {
+            Text = text,
+            FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Liberation Mono, DejaVu Sans Mono"),
+            FontSize = 9.5,
+            FontWeight = FontWeight.Bold,
+            Foreground = new SolidColorBrush(Color.Parse("#798793")),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var border = new Border { Child = block };
+        border.Classes.Add("pin");
+        border.Background = null;
+        border.BorderThickness = new Thickness(0);
+        border.Padding = new Thickness(0);
+        Grid.SetRow(border, row);
+        Grid.SetColumn(border, column);
+        ChannelTable.Children.Add(border);
+    }
+
+    private void AddTableCell(int row, int column, string text)
+    {
+        var block = new TextBlock
+        {
+            Text = text,
+            FontSize = 10.5,
+            Foreground = new SolidColorBrush(Color.Parse("#F2F6FA")),
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var border = new Border { Child = block };
+        border.Classes.Add("pin");
+        Grid.SetRow(border, row);
+        Grid.SetColumn(border, column);
+        ChannelTable.Children.Add(border);
+    }
+
+    private static string DescribePortHint(PortOption port)
+    {
+        if (port.Availability == PortAvailability.Unavailable)
+        {
+            return "Порт сейчас недоступен (устройство не подключено).";
+        }
+
+        return $"Тип порта: {DescribeJack(port.JackType)} · каналов: {port.ChannelCount}";
+    }
+
+    private static string DescribeJack(AudioJackType jackType) => jackType switch
+    {
+        AudioJackType.Microphone => "микрофонный вход",
+        AudioJackType.LineIn => "линейный вход",
+        AudioJackType.LineOut => "линейный выход",
+        AudioJackType.Headphone => "наушники",
+        AudioJackType.Speaker => "динамики",
+        AudioJackType.Headset => "комбинированный разъём гарнитуры",
+        AudioJackType.Digital => "цифровой интерфейс",
+        AudioJackType.Monitor => "монитор выхода",
+        _ => "не определён",
+    };
+
+    private List<string> GetUsedBy(ChannelOption channel)
+    {
+        if (channel.IsInput)
+        {
+            return _engine.Inputs
+                .Where(bus => bus.IsConnected
+                              && bus.DeviceId == channel.Device.Id
+                              && bus.PhysicalChannel == channel.Index)
+                .Select(bus => bus.Name)
+                .ToList();
+        }
+
+        return _engine.Outputs
+            .Where(bus => bus.IsConnected
+                          && bus.DeviceId == channel.Device.Id
+                          && bus.PhysicalChannel == channel.Index)
+            .Select(bus => bus.Name)
+            .ToList();
+    }
+
+    private double? GetChannelRms(ChannelOption channel)
+    {
+        double? maximum = null;
+
+        IEnumerable<SignalRingBuffer> buffers;
+        if (channel.IsInput)
+        {
+            buffers = _engine.Inputs
+                .Where(bus => bus.IsConnected
+                              && bus.DeviceId == channel.Device.Id
+                              && bus.PhysicalChannel == channel.Index)
+                .Select(bus => bus.RawBuffer);
+        }
+        else
+        {
+            buffers = _engine.Outputs
+                .Where(bus => bus.IsConnected
+                              && bus.DeviceId == channel.Device.Id
+                              && bus.PhysicalChannel == channel.Index)
+                .Select(bus => bus.RawBuffer);
+        }
+
+        foreach (var buffer in buffers)
+        {
+            var count = Math.Min(1024, buffer.Count);
+            if (count < 64)
+            {
+                continue;
+            }
+
+            var samples = buffer.Snapshot(count, 0);
+            double sum = 0;
+            foreach (var sample in samples)
+            {
+                sum += sample * sample;
+            }
+
+            var rms = Math.Sqrt(sum / samples.Length);
+            if (maximum is null || rms > maximum)
+            {
+                maximum = rms;
+            }
+        }
+
+        return maximum;
+    }
+
+    private static string FormatLevel(double? rms)
+    {
+        if (rms is not { } value || value <= 1e-9)
+        {
+            return "—";
+        }
+
+        return $"{20 * Math.Log10(value):0.0} dB";
+    }
+
+    private void UpdateInspectorLevels()
+    {
+        foreach (var (channel, level) in _levelCells)
+        {
+            level.Text = FormatLevel(GetChannelRms(channel));
+        }
+    }
+
+    private async void OpenFindSignalWindow(Action<SignalSelection> onSelected)
+    {
+        if (_engine.IsRunning)
+        {
+            ShowStatus("Остановите измерение перед поиском сигнала.");
+            return;
+        }
+
+        var window = new FindSignalWindow(_engine, _cards);
+        var result = await window.ShowDialog<SignalSelection?>(this);
+        if (result is { } selection)
+        {
+            onSelected(selection);
+        }
     }
 
     private void UpdateSessionInfo()

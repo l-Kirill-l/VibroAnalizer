@@ -13,13 +13,17 @@
     <Border Classes="chassis" Margin="12">
         <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
 
-            <StackPanel Grid.Row="0" Spacing="3">
-                <TextBlock Classes="tag" Text="ИЗМЕРИТЕЛЬНОЕ ОКНО · СПЕКТР" />
-                <TextBlock Classes="hero" Text="Спектр" FontSize="22" />
-                <TextBlock Classes="subtitle"
-                           Text="Амплитудный спектр сигнала, уровень пика и шумовая дорожка." />
-                <TextBlock x:Name="BoundText" Classes="hint" Text="Шина не задана" />
-            </StackPanel>
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="3">
+                    <TextBlock Classes="tag" Text="ИЗМЕРИТЕЛЬНОЕ ОКНО · СПЕКТР" />
+                    <TextBlock Classes="hero" Text="Спектр" FontSize="22" />
+                    <TextBlock Classes="subtitle"
+                               Text="Амплитудный спектр сигнала, уровень пика и шумовая дорожка." />
+                    <TextBlock x:Name="BoundText" Classes="hint" Text="Шина не задана" />
+                </StackPanel>
+                <Button Grid.Column="1" x:Name="HelpButton" Content="?"
+                        Classes="help" VerticalAlignment="Top" Margin="10,0,0,0" />
+            </Grid>
 
             <Border Grid.Row="1" Classes="card" Padding="12">
                 <StackPanel Spacing="10">
@@ -62,7 +66,7 @@
                             <StackPanel Spacing="2">
                                 <TextBlock Classes="readout-label" Text="УРОВЕНЬ ПИКА" />
                                 <TextBlock x:Name="PeakLevelLabel" Classes="readout-value" Text="—" />
-                                <TextBlock Classes="readout-unit" Text="дБFS" />
+                                <TextBlock Classes="readout-unit" Text="дБFS (ампл.)" />
                             </StackPanel>
                         </Border>
 
@@ -70,7 +74,7 @@
                             <StackPanel Spacing="2">
                                 <TextBlock Classes="readout-label" Text="УРОВЕНЬ ШУМА" />
                                 <TextBlock x:Name="NoiseFloorLabel" Classes="readout-value" Text="—" />
-                                <TextBlock Classes="readout-unit" Text="дБFS" />
+                                <TextBlock Classes="readout-unit" Text="дБFS (ампл.)" />
                             </StackPanel>
                         </Border>
                     </Grid>

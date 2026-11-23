@@ -36,7 +36,7 @@ public partial class OverlayWindow : Window
         TimePlot.Plot.XLabel("Время, с");
         TimePlot.Plot.YLabel("Амплитуда");
         SpectrumPlot.Plot.XLabel("Частота, Гц");
-        SpectrumPlot.Plot.YLabel("Уровень, dBFS");
+        SpectrumPlot.Plot.YLabel("Уровень, дБFS (ампл.)");
         TimePlot.Plot.ShowLegend(Alignment.UpperRight);
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };

@@ -32,6 +32,7 @@ public partial class ScopeWindow : Window
         BoundText.Text = string.IsNullOrWhiteSpace(busName)
             ? "Шина не задана"
             : $"Шина: {busName}";
+        HelpUi.Attach(HelpButton, analyzer.Help, analyzer.Title);
 
         // Начальные значения элементов управления берём из анализатора.
         TimeWindowBox.Minimum = (decimal)MinTimeWindowSeconds;

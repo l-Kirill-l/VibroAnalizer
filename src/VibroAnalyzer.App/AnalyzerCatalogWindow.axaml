@@ -1,0 +1,27 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        d:DesignWidth="980" d:DesignHeight="820"
+        x:Class="VibroAnalyzer.App.AnalyzerCatalogWindow"
+        Title="Каталог анализаторов"
+        Width="980" Height="820"
+        MinWidth="760" MinHeight="560">
+
+    <Border Classes="chassis" Margin="12">
+        <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Spacing="3" Margin="0,0,0,12">
+                <TextBlock Classes="tag" Text="БИБЛИОТЕКА · АНАЛИЗАТОРЫ" />
+                <TextBlock Classes="hero" Text="Каталог анализаторов" FontSize="22" />
+                <TextBlock Classes="subtitle"
+                           Text="Выберите анализатор — он подключится к текущей шине. Описание объясняет, как он работает и для чего нужен." />
+                <TextBlock x:Name="BoundText" Classes="hint" Text="Шина не задана" />
+            </StackPanel>
+
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="CategoriesPanel" Spacing="12" />
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</Window>

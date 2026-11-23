@@ -36,7 +36,12 @@ public sealed record DeviceCapabilities(
     bool SupportsExclusiveMode,
     bool SupportsLoopback,
     bool SupportsChannelMapping,
-    string Notes = "");
+    string Notes = "",
+    double? MaxInputCurrentMa = null,
+    double? InputImpedanceOhms = null,
+    double? MinFrequencyHz = 20.0,
+    double? MaxFrequencyHz = 20000.0,
+    int? BitDepth = null);
 
 /// <summary>
 /// Сведения об аудиоустройстве, полученные от выбранного бэкенда.
@@ -58,6 +63,49 @@ public sealed record AudioDeviceInfo(
     /// <summary>Устройство одновременно поддерживает вход и выход.</summary>
     public bool IsDuplex => IsInput && IsOutput;
 
-    /// <summary>Для отображения в списках достаточно имени устройства.</summary>
-    public override string ToString() => Name;
+    /// <summary>Идентификатор физической звуковой карты (например, alsa_card.*).</summary>
+    public string CardId { get; init; } = "";
+
+    /// <summary>
+    /// Идентификатор потока/узла, который открывает бэкенд.
+    /// Для логического устройства одного разъёма может совпадать с другими разъёмами.
+    /// </summary>
+    public string StreamId { get; init; } = "";
+
+    /// <summary>Идентификатор выбранного физического разъёма (порта).</summary>
+    public string PortId { get; init; } = "";
+
+    /// <summary>Имя физического разъёма, например «Встроенный микрофон».</summary>
+    public string PortName { get; init; } = "";
+
+    /// <summary>Короткое имя карты/кодека для интерфейса.</summary>
+    public string ControllerName { get; init; } = "";
+
+    /// <summary>Идентификатор потока с запасным значением <see cref="Id"/>.</summary>
+    public string EffectiveStreamId => string.IsNullOrWhiteSpace(StreamId) ? Id : StreamId;
+
+    /// <summary>Идентификатор активного физического разъёма, если он известен.</summary>
+    public string ActivePortId { get; init; } = "";
+
+    /// <summary>
+    /// Физические разъёмы карты: входы, выходы и совмещённые гнёзда.
+    /// Пустой список означает, что драйвер не сообщает топологию разъёмов.
+    /// </summary>
+    public IReadOnlyList<AudioPortInfo> Ports { get; init; } = Array.Empty<AudioPortInfo>();
+
+    /// <summary>
+    /// В основных списках показываем физический разъём и кодек, а не
+    /// программный идентификатор потока.
+    /// </summary>
+    public override string ToString()
+    {
+        if (string.IsNullOrWhiteSpace(PortName))
+        {
+            return Name;
+        }
+
+        return string.IsNullOrWhiteSpace(ControllerName)
+            ? PortName
+            : $"{PortName} · {ControllerName}";
+    }
 }

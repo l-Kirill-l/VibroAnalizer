@@ -12,7 +12,7 @@ namespace VibroAnalyzer.Core.Routing;
 /// </summary>
 public sealed class InputBus : ISignalBus, IDisposable
 {
-    private const int HistorySeconds = 5;
+    private const int HistorySeconds = 20;
 
     private readonly object _sync = new();
     private readonly List<AnalyzerBase> _analyzers = new();
@@ -29,18 +29,20 @@ public sealed class InputBus : ISignalBus, IDisposable
         int physicalChannel,
         int sampleRate,
         CalibrationProfile? calibration = null)
+        : this(name, sampleRate, calibration)
+    {
+        Connect(deviceId, physicalChannel);
+    }
+
+    /// <summary>Создаёт логический вход без физического подключения.</summary>
+    public InputBus(
+        string name,
+        int sampleRate,
+        CalibrationProfile? calibration = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
-
-        if (physicalChannel < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(physicalChannel));
-        }
 
         Name = name;
-        DeviceId = deviceId;
-        PhysicalChannel = physicalChannel;
         Calibration = calibration ?? new CalibrationProfile();
         Demodulation = new DemodulationChain();
 
@@ -53,9 +55,14 @@ public sealed class InputBus : ISignalBus, IDisposable
 
     public string Name { get; set; }
 
-    public string DeviceId { get; }
+    /// <summary>Идентификатор устройства; пусто, если вход ещё не подключён.</summary>
+    public string DeviceId { get; private set; } = "";
 
-    public int PhysicalChannel { get; }
+    /// <summary>Физический канал устройства; -1, если вход ещё не подключён.</summary>
+    public int PhysicalChannel { get; private set; } = -1;
+
+    /// <summary>Есть ли привязка к физическому каналу.</summary>
+    public bool IsConnected => !string.IsNullOrWhiteSpace(DeviceId) && PhysicalChannel >= 0;
 
     public int SampleRate
     {
@@ -110,7 +117,24 @@ public sealed class InputBus : ISignalBus, IDisposable
     public DemodulationChain Demodulation { get; }
 
     /// <summary>Краткое описание для интерфейса.</summary>
-    public string Description => $"канал {PhysicalChannel + 1}";
+    public string Description => IsConnected ? $"канал {PhysicalChannel + 1}" : "не подключён";
+
+    /// <summary>Привязывает логический вход к физическому каналу устройства.</summary>
+    public void Connect(string deviceId, int physicalChannel)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
+        if (physicalChannel < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(physicalChannel));
+        }
+
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            DeviceId = deviceId;
+            PhysicalChannel = physicalChannel;
+        }
+    }
 
     /// <summary>
     /// Пересоздаёт буферы и хост анализаторов под новую частоту.
@@ -192,7 +216,7 @@ public sealed class InputBus : ISignalBus, IDisposable
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        if (PhysicalChannel >= block.Channels)
+        if (!IsConnected || PhysicalChannel >= block.Channels)
         {
             return;
         }
