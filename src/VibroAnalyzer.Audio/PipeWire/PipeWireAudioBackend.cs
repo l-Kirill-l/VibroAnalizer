@@ -277,10 +277,18 @@ public sealed class PipeWireAudioBackend : IAudioBackend
                     SupportsExclusiveMode: false,
                     SupportsLoopback: true,
                     SupportsChannelMapping: true,
-                    Notes: "Раздельные потоки входа/выхода; возможен дрейф частоты — используйте ресинхронизацию."),
+                    Notes: "Раздельные потоки входа/выхода; возможен дрейф частоты — используйте ресинхронизацию.",
+                    MaxInputCurrentMa: 0.1,
+                    InputImpedanceOhms: 10000,
+                    MinFrequencyHz: 20,
+                    MaxFrequencyHz: Math.Min(20000, DefaultSampleRate * 0.5),
+                    BitDepth: ParseBitDepth(GetString(properties, "alsa.resolution_bits"))),
                 IsMonitor: isMonitor));
         }
     }
+
+    private static int? ParseBitDepth(string value)
+        => int.TryParse(value, out var bits) && bits > 0 ? bits : null;
 
     private static string GetString(JsonElement element, string propertyName)
     {

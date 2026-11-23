@@ -36,7 +36,12 @@ public sealed record DeviceCapabilities(
     bool SupportsExclusiveMode,
     bool SupportsLoopback,
     bool SupportsChannelMapping,
-    string Notes = "");
+    string Notes = "",
+    double? MaxInputCurrentMa = null,
+    double? InputImpedanceOhms = null,
+    double? MinFrequencyHz = 20.0,
+    double? MaxFrequencyHz = 20000.0,
+    int? BitDepth = null);
 
 /// <summary>
 /// Сведения об аудиоустройстве, полученные от выбранного бэкенда.

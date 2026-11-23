@@ -48,7 +48,12 @@ public sealed class SimulatedAudioBackend : IAudioBackend
             SupportsExclusiveMode: false,
             SupportsLoopback: true,
             SupportsChannelMapping: true,
-            Notes: "Виртуальный генератор с настраиваемым конструктором тонов."));
+            Notes: "Виртуальный генератор с настраиваемым конструктором тонов.",
+            MaxInputCurrentMa: 0.1,
+            InputImpedanceOhms: 10000,
+            MinFrequencyHz: 20,
+            MaxFrequencyHz: 20000,
+            BitDepth: 32));
 
     private static readonly AudioDeviceInfo OutputDevice = new(
         "sim-output",
@@ -98,7 +103,12 @@ public sealed class SimulatedAudioBackend : IAudioBackend
             SupportsExclusiveMode: false,
             SupportsLoopback: true,
             SupportsChannelMapping: true,
-            Notes: "Виртуальный дуплекс: запись последнего выхода подмешивается во вход."));
+            Notes: "Виртуальный дуплекс: запись последнего выхода подмешивается во вход.",
+            MaxInputCurrentMa: 0.1,
+            InputImpedanceOhms: 10000,
+            MinFrequencyHz: 20,
+            MaxFrequencyHz: 20000,
+            BitDepth: 32));
 
     public string Name => BackendName;
 

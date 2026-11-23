@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using VibroAnalyzer.Core.Analysis;
@@ -10,13 +9,11 @@ using VibroAnalyzer.Core.Analysis;
 namespace VibroAnalyzer.App;
 
 /// <summary>
-/// Справка анализатора по клику на кнопку «?»: отдельные разделы,
-/// формулы построчно и прокрутка для длинных текстов.
+/// Справка анализатора открывается по клику в отдельном окне.
+/// Содержимое разбито на разделы, формулы выводятся построчно.
 /// </summary>
 internal static class HelpUi
 {
-    private static readonly IBrush Background = new SolidColorBrush(Color.Parse("#F21B232C"));
-    private static readonly IBrush BorderBrush = new SolidColorBrush(Color.Parse("#42BED7EB"));
     private static readonly IBrush Ink0 = new SolidColorBrush(Color.Parse("#F2F6FA"));
     private static readonly IBrush Ink1 = new SolidColorBrush(Color.Parse("#B7C3CF"));
     private static readonly IBrush Accent = new SolidColorBrush(Color.Parse("#49E8B2"));
@@ -25,19 +22,29 @@ internal static class HelpUi
 
     public static void Attach(Button button, AnalyzerHelp help, string? title = null)
     {
-        var content = new StackPanel { Spacing = 10 };
-
-        if (!string.IsNullOrWhiteSpace(title))
+        button.Click += (_, _) =>
         {
-            content.Children.Add(new TextBlock
+            var window = new HelpWindow(help, title);
+            var owner = TopLevel.GetTopLevel(button) as Window;
+
+            if (owner is not null)
             {
-                Text = title,
-                FontSize = 18,
-                FontWeight = FontWeight.Bold,
-                Foreground = Ink0,
-                TextWrapping = TextWrapping.Wrap,
-            });
-        }
+                window.Show(owner);
+            }
+            else
+            {
+                window.Show();
+            }
+        };
+    }
+
+    internal static Control CreateContent(AnalyzerHelp help)
+    {
+        var content = new StackPanel
+        {
+            Spacing = 10,
+            MaxWidth = 700,
+        };
 
         AddSection(content, "НАЗНАЧЕНИЕ", help.Purpose, mono: false);
         AddFormulaSection(content, help.Formulas);
@@ -45,26 +52,7 @@ internal static class HelpUi
         AddSection(content, "КАК ИСПОЛЬЗОВАТЬ", help.Usage, mono: false);
         AddSection(content, "ОГРАНИЧЕНИЯ", help.Limitations, mono: false);
 
-        var scroll = new ScrollViewer
-        {
-            Content = content,
-            MaxHeight = 500,
-            MaxWidth = 620,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        };
-
-        var border = new Border
-        {
-            Child = scroll,
-            Background = Background,
-            BorderBrush = BorderBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(16),
-        };
-
-        button.Flyout = new Flyout { Content = border };
+        return content;
     }
 
     private static void AddSection(StackPanel panel, string title, string text, bool mono)
@@ -129,7 +117,9 @@ internal static class HelpUi
 
     private static IEnumerable<string> SplitFormulas(string formulas)
     {
-        foreach (var part in formulas.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var part in formulas.Split(
+                     ';',
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             yield return part;
         }

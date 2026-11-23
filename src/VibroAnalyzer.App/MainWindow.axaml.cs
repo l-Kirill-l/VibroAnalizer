@@ -1281,6 +1281,7 @@ public partial class MainWindow : Window
             lines.Add($"Вход: {input.Name}");
             lines.Add($"  каналов: {input.InputChannels}, частота по умолчанию: {input.DefaultSampleRate} Гц");
             lines.Add($"  возможности: {DescribeCapabilities(input.Capabilities)}");
+            lines.Add($"  вход: {DescribeInputSpecs(input.Capabilities)}");
 
             var inputChannels = input.Channels
                 .Where(channel => channel.IsInput)
@@ -1402,6 +1403,39 @@ public partial class MainWindow : Window
         }
 
         return string.Join(", ", parts);
+    }
+
+    private static string DescribeInputSpecs(DeviceCapabilities capabilities)
+    {
+        var parts = new List<string>();
+
+        if (capabilities.MaxInputVoltageRms is { } volts)
+        {
+            parts.Add($"напряжение до {volts:0.###} В СКЗ");
+        }
+
+        if (capabilities.MaxInputCurrentMa is { } current)
+        {
+            parts.Add($"ток (оценка) до {current:0.###} мА");
+        }
+
+        if (capabilities.InputImpedanceOhms is { } impedance)
+        {
+            parts.Add($"импеданс {impedance / 1000.0:0.###} кОм");
+        }
+
+        if (capabilities.MinFrequencyHz is { } minFrequency
+            && capabilities.MaxFrequencyHz is { } maxFrequency)
+        {
+            parts.Add($"полоса {minFrequency:0.###}–{maxFrequency:0.###} Гц");
+        }
+
+        if (capabilities.BitDepth is { } bits)
+        {
+            parts.Add($"{bits} бит");
+        }
+
+        return parts.Count > 0 ? string.Join(", ", parts) : "параметры не сообщаются устройством";
     }
 
     private void UpdateSessionInfo()

@@ -74,7 +74,12 @@ public sealed record DeviceCapabilities(
     bool SupportsExclusiveMode,
     bool SupportsLoopback,
     bool SupportsChannelMapping,
-    string Notes = "");
+    string Notes = "",
+    double? MaxInputCurrentMa = null,
+    double? InputImpedanceOhms = null,
+    double? MinFrequencyHz = 20.0,
+    double? MaxFrequencyHz = 20000.0,
+    int? BitDepth = null);
 
 public sealed record AudioDeviceInfo(
     string Id,
@@ -556,7 +561,10 @@ public static class AudioBackendFactory
 - `MainWindow(AudioEngine engine, SessionContext session)`
   - управляет списком входов, выходов и виртуальных входов;
   - `OpenAnalyzerWindows(string specification)`, `StartMeasurement()`;
-  - `ConfigureDemoRouting()` для демонстрационного набора.
+  - `OpenSettingsAsync()`, `ConfigureDemoRouting()` для демонстрационного набора.
+- `SettingsWindow(bool demoEnabled, DemoSignalConfig config)` — демо-режим и
+  конструктор частот/колебаний.
+- `HelpWindow(AnalyzerHelp help, string? title = null)` — справка по клику.
 - `ScopeWindow(OscilloscopeAnalyzer analyzer, string? busName = null)`
 - `SpectrumWindow(SpectrumAnalyzer analyzer, string? busName = null)`
 - `ModulationWindow(ModulationChain modulation, string? busName = null)`

@@ -198,6 +198,7 @@
                                       ColumnDefinitions="64,*"
                                       RowDefinitions="Auto,Auto,Auto,Auto"
                                       ColumnSpacing="8" RowSpacing="4" />
+                                <TextBlock Classes="hint" Text="R — вход, W — выход, RW — двунаправленный." />
                                 <TextBlock x:Name="InfoText" Classes="hint" />
                             </StackPanel>
                         </Border>

@@ -128,7 +128,12 @@ public sealed class WasapiAudioBackend : IAudioBackend
                         SupportsExclusiveMode: true,
                         SupportsLoopback: true,
                         SupportsChannelMapping: true,
-                        Notes: CreateNotes(isInput, sampleRate, channels, mixFormat.BitsPerSample))));
+                        Notes: CreateNotes(isInput, sampleRate, channels, mixFormat.BitsPerSample),
+                        MaxInputCurrentMa: 0.1,
+                        InputImpedanceOhms: 10000,
+                        MinFrequencyHz: 20,
+                        MaxFrequencyHz: Math.Min(20000, sampleRate * 0.5),
+                        BitDepth: mixFormat.BitsPerSample)));
             }
             catch
             {
