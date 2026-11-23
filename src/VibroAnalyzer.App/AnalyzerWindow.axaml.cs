@@ -34,7 +34,7 @@ public partial class AnalyzerWindow : Window
         BoundText.Text = string.IsNullOrWhiteSpace(busName)
             ? "Шина не задана"
             : $"Шина: {busName}";
-        HelpUi.Attach(HelpButton, analyzer.Help);
+        HelpUi.Attach(HelpButton, analyzer.Help, analyzer.Title);
 
         PlotTheme.Apply(PlotView.Plot);
         BuildParameters();

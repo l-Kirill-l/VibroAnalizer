@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using VibroAnalyzer.Core.Audio;
 using VibroAnalyzer.Core.Devices;
+using VibroAnalyzer.Core.Modulation;
 using VibroAnalyzer.Core.Signals;
 
 namespace VibroAnalyzer.Audio.Simulated;
@@ -17,6 +18,14 @@ public sealed class SimulatedAudioBackend : IAudioBackend
 
     private static readonly int[] Rates = { 44100, 48000, 96000 };
 
+    public SimulatedAudioBackend(DemoSignalConfig? config = null)
+    {
+        Config = (config ?? DemoSignalConfig.CreateDefault()).Clone();
+    }
+
+    /// <summary>Конструктор демонстрационного сигнала.</summary>
+    public DemoSignalConfig Config { get; }
+
     private static readonly AudioDeviceInfo InputDevice = new(
         "sim-input",
         "Демо-вход (генератор)",
@@ -29,8 +38,8 @@ public sealed class SimulatedAudioBackend : IAudioBackend
         SupportedSampleRates: Rates,
         Channels: new[]
         {
-            new AudioChannelInfo(0, "Вход 1 · 1 кГц", IsInput: true, AudioJackType.LineIn),
-            new AudioChannelInfo(1, "Вход 2 · 100 Гц", IsInput: true, AudioJackType.LineIn),
+            new AudioChannelInfo(0, "Вход 1 · конструктор", IsInput: true, AudioJackType.LineIn),
+            new AudioChannelInfo(1, "Вход 2 · конструктор", IsInput: true, AudioJackType.LineIn),
         },
         Capabilities: new DeviceCapabilities(
             SupportsDuplex: false,
@@ -39,7 +48,7 @@ public sealed class SimulatedAudioBackend : IAudioBackend
             SupportsExclusiveMode: false,
             SupportsLoopback: true,
             SupportsChannelMapping: true,
-            Notes: "Виртуальный генератор: канал 1 — 1/3 кГц, канал 2 — 100/500 Гц."));
+            Notes: "Виртуальный генератор с настраиваемым конструктором тонов."));
 
     private static readonly AudioDeviceInfo OutputDevice = new(
         "sim-output",
@@ -122,7 +131,7 @@ public sealed class SimulatedAudioBackend : IAudioBackend
             throw new AudioBackendException("Частота дискретизации должна быть больше нуля.");
         }
 
-        return new SimulatedAudioStream(options);
+        return new SimulatedAudioStream(options, Config.Clone());
     }
 
     private sealed class SimulatedAudioStream : IAudioStream
@@ -130,6 +139,11 @@ public sealed class SimulatedAudioBackend : IAudioBackend
         private readonly object _sync = new();
         private readonly object _outputSync = new();
         private readonly AudioStreamOptions _options;
+        private readonly DemoSignalConfig _config;
+        private readonly DemoTone[] _tones;
+        private readonly double[] _phases;
+        private readonly double _noiseLevel;
+        private readonly double _loopbackLevel;
 
         private CancellationTokenSource? _cts;
         private Task? _inputTask;
@@ -138,15 +152,14 @@ public sealed class SimulatedAudioBackend : IAudioBackend
         private bool _running;
         private bool _disposed;
 
-        private double _phase1000;
-        private double _phase3000;
-        private double _phase50;
-        private double _phase100;
-        private double _phase500;
-
-        public SimulatedAudioStream(AudioStreamOptions options)
+        public SimulatedAudioStream(AudioStreamOptions options, DemoSignalConfig config)
         {
             _options = options;
+            _config = config;
+            _tones = config.Tones.ToArray();
+            _phases = _tones.Select(tone => WrapPhase(tone.Phase)).ToArray();
+            _noiseLevel = Math.Clamp(config.NoiseLevel, 0.0, 1.0);
+            _loopbackLevel = Math.Clamp(config.LoopbackLevel, 0.0, 1.0);
         }
 
         public AudioStreamOptions Options => _options;
@@ -289,6 +302,8 @@ public sealed class SimulatedAudioBackend : IAudioBackend
         private SignalBlock GenerateInputBlock(int frames, int channels)
         {
             var samples = new float[frames * channels];
+            var sampleRate = _options.SampleRate;
+            var noiseAmplitude = _noiseLevel * 0.5;
 
             float[]? loop = null;
             lock (_outputSync)
@@ -299,39 +314,41 @@ public sealed class SimulatedAudioBackend : IAudioBackend
                 }
             }
 
-            var sampleRate = _options.SampleRate;
-            var step1000 = 2 * Math.PI * 1000 / sampleRate;
-            var step3000 = 2 * Math.PI * 3000 / sampleRate;
-            var step50 = 2 * Math.PI * 50 / sampleRate;
-            var step100 = 2 * Math.PI * 100 / sampleRate;
-            var step500 = 2 * Math.PI * 500 / sampleRate;
+            var toneValues = new double[_tones.Length];
 
             for (var frame = 0; frame < frames; frame++)
             {
-                var noise = (Random.Shared.NextDouble() - 0.5) * 0.004;
-                var value0 = 0.30 * Math.Sin(_phase1000)
-                             + 0.06 * Math.Sin(_phase3000)
-                             + 0.02 * Math.Sin(_phase50)
-                             + noise;
-                var value1 = 0.25 * Math.Sin(_phase100)
-                             + 0.10 * Math.Sin(_phase500)
-                             + noise * 0.5;
-
-                _phase1000 += step1000;
-                _phase3000 += step3000;
-                _phase50 += step50;
-                _phase100 += step100;
-                _phase500 += step500;
+                for (var toneIndex = 0; toneIndex < _tones.Length; toneIndex++)
+                {
+                    var tone = _tones[toneIndex];
+                    toneValues[toneIndex] = RenderWaveform(tone.Waveform, _phases[toneIndex]) * tone.Amplitude;
+                    _phases[toneIndex] = WrapPhase(
+                        _phases[toneIndex] + Math.Max(0.0, tone.FrequencyHz) / sampleRate);
+                }
 
                 for (var channel = 0; channel < channels; channel++)
                 {
-                    var sample = channel % 2 == 0 ? value0 : value1;
+                    var sample = 0.0;
 
-                    if (loop is { Length: > 0 })
+                    for (var toneIndex = 0; toneIndex < _tones.Length; toneIndex++)
+                    {
+                        var tone = _tones[toneIndex];
+                        if (tone.Channel < 0 || tone.Channel == channel)
+                        {
+                            sample += toneValues[toneIndex];
+                        }
+                    }
+
+                    if (noiseAmplitude > 0.0)
+                    {
+                        sample += (Random.Shared.NextDouble() - 0.5) * 2.0 * noiseAmplitude;
+                    }
+
+                    if (loop is { Length: > 0 } && _loopbackLevel > 0.0)
                     {
                         var loopChannels = Math.Max(1, _options.OutputChannels);
                         var index = frame * loopChannels + channel % loopChannels;
-                        sample += 0.15 * loop[index % loop.Length];
+                        sample += _loopbackLevel * loop[index % loop.Length];
                     }
 
                     samples[frame * channels + channel] = (float)Math.Clamp(sample, -1.0, 1.0);
@@ -344,6 +361,33 @@ public sealed class SimulatedAudioBackend : IAudioBackend
                 sampleRate,
                 Interlocked.Increment(ref _sequence),
                 DateTimeOffset.UtcNow);
+        }
+
+        private static double RenderWaveform(CarrierWaveform waveform, double phase)
+        {
+            var p = WrapPhase(phase);
+
+            return waveform switch
+            {
+                CarrierWaveform.Square => p < 0.5 ? 1.0 : -1.0,
+                CarrierWaveform.Triangle => p < 0.25
+                    ? 4.0 * p
+                    : p < 0.75
+                        ? 2.0 - 4.0 * p
+                        : 4.0 * p - 4.0,
+                _ => Math.Sin(2.0 * Math.PI * p),
+            };
+        }
+
+        private static double WrapPhase(double phase)
+        {
+            if (!double.IsFinite(phase))
+            {
+                return 0.0;
+            }
+
+            phase -= Math.Floor(phase);
+            return phase >= 1.0 ? 0.0 : phase;
         }
     }
 }

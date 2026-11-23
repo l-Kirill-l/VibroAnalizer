@@ -58,13 +58,30 @@ public sealed class PulseAnalyzer : AnalyzerBase, IAnalyzerView
         }
 
         var count = samples.Length;
-        var filter = BiquadFilter.CreateLowPass(sampleRate, CutoffHz);
+        var highPass = BiquadFilter.CreateHighPass(sampleRate, 0.5);
+        var bandLowPass = BiquadFilter.CreateLowPass(sampleRate, 10.0);
+        BiquadFilter? notch50 = sampleRate > 110 ? BiquadFilter.CreateNotch(sampleRate, 50.0, 30.0) : null;
+        BiquadFilter? notch60 = sampleRate > 130 ? BiquadFilter.CreateNotch(sampleRate, 60.0, 30.0) : null;
+        var envelopeFilter = BiquadFilter.CreateLowPass(sampleRate, CutoffHz);
         var envelope = new double[count];
         var times = new double[count];
 
         for (var i = 0; i < count; i++)
         {
-            envelope[i] = filter.Process(Math.Abs(samples[i]));
+            var value = highPass.Process(samples[i]);
+            value = bandLowPass.Process(value);
+
+            if (notch50 is not null)
+            {
+                value = notch50.Process(value);
+            }
+
+            if (notch60 is not null)
+            {
+                value = notch60.Process(value);
+            }
+
+            envelope[i] = envelopeFilter.Process(Math.Abs(value));
             times[i] = (double)i / sampleRate;
         }
 

@@ -58,14 +58,16 @@ public sealed class RespirationAnalyzer : AnalyzerBase, IAnalyzerView
         }
 
         var count = samples.Length;
-        var filter = BiquadFilter.CreateLowPass(sampleRate, CutoffHz);
+        var highPass = BiquadFilter.CreateHighPass(sampleRate, 0.05);
+        var lowPass = BiquadFilter.CreateLowPass(sampleRate, Math.Min(1.0, CutoffHz));
         var smoothed = new double[count];
         var times = new double[count];
         var envelope = new double[count];
 
         for (var i = 0; i < count; i++)
         {
-            smoothed[i] = filter.Process(samples[i]);
+            var value = highPass.Process(samples[i]);
+            smoothed[i] = lowPass.Process(value);
             times[i] = (double)i / sampleRate;
         }
 

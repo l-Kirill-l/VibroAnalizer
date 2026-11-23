@@ -82,7 +82,7 @@ public sealed class WasapiAudioBackend : IAudioBackend
 
     private static void AddDevices(MMDeviceEnumerator enumerator, DataFlow flow, List<AudioDeviceInfo> target)
     {
-        var devices = enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active);
+        var devices = enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active | DeviceState.Unplugged);
         foreach (var device in devices)
         {
             try

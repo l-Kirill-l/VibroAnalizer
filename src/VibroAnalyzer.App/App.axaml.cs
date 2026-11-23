@@ -33,15 +33,16 @@ public partial class App : Application
             var openWindows = ReadOption(desktop.Args ?? Array.Empty<string>(), "--open");
             var autoStart = HasFlag(desktop.Args ?? Array.Empty<string>(), "--start");
             var replayPath = ReadOption(desktop.Args ?? Array.Empty<string>(), "--replay");
+            var openSettings = HasFlag(desktop.Args ?? Array.Empty<string>(), "--settings");
 
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             var mainWindow = new MainWindow(_engine, session);
             desktop.MainWindow = mainWindow;
 
             if (demo || !string.IsNullOrWhiteSpace(openWindows) || autoStart
-                || !string.IsNullOrWhiteSpace(replayPath))
+                || !string.IsNullOrWhiteSpace(replayPath) || openSettings)
             {
-                mainWindow.Opened += (_, _) =>
+                mainWindow.Opened += async (_, _) =>
                 {
                     if (demo)
                     {
@@ -56,6 +57,11 @@ public partial class App : Application
                     if (!string.IsNullOrWhiteSpace(replayPath))
                     {
                         mainWindow.OpenReplay(replayPath);
+                    }
+
+                    if (openSettings)
+                    {
+                        await mainWindow.OpenSettingsAsync();
                     }
 
                     if (autoStart)

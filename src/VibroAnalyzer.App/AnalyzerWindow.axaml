@@ -21,8 +21,7 @@
                     <TextBlock x:Name="BoundText" Classes="hint" Text="Шина не задана" />
                 </StackPanel>
                 <Button Grid.Column="1" x:Name="HelpButton" Content="?"
-                        Classes="help" VerticalAlignment="Top" Margin="10,0,0,0"
-                        ToolTip.Tip="Подробная справка" />
+                        Classes="help" VerticalAlignment="Top" Margin="10,0,0,0" />
             </Grid>
 
             <Border x:Name="ParametersCard" Grid.Row="1" Classes="card" Padding="12" IsVisible="False">

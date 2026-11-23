@@ -53,7 +53,7 @@ public partial class SpectrumWindow : Window
         BoundText.Text = string.IsNullOrWhiteSpace(busName)
             ? "Шина не задана"
             : $"Шина: {busName}";
-        HelpUi.Attach(HelpButton, analyzer.Help);
+        HelpUi.Attach(HelpButton, analyzer.Help, analyzer.Title);
 
         FftSizeBox.ItemsSource = FftSizes;
         WindowBox.ItemsSource = WindowNames;

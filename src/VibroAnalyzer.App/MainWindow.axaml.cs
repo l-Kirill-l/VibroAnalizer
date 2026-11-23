@@ -1,14 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using VibroAnalyzer.Audio;
+using VibroAnalyzer.Audio.Simulated;
 using VibroAnalyzer.Core.Analysis;
+using VibroAnalyzer.Core.Audio;
 using VibroAnalyzer.Core.Devices;
 using VibroAnalyzer.Core.Engine;
 using VibroAnalyzer.Core.Modulation;
@@ -48,6 +52,7 @@ public partial class MainWindow : Window
     private SpectrumAnalyzer? _summarySpectrum;
     private ISignalBus? _summaryBus;
     private ISignalBus? _recordingBus;
+    private DemoSignalConfig _demoConfig = DemoSignalConfig.CreateDefault();
 
     private bool _ready;
     private bool _loading;
@@ -153,6 +158,7 @@ public partial class MainWindow : Window
         _ready = true;
 
         BackendCombo.ItemsSource = AudioBackendFactory.AvailableBackendNames;
+        BackendCombo.PlaceholderText = "Бэкенд";
         RateCombo.ItemsSource = SupportedRates;
         BufferCombo.ItemsSource = SupportedBuffers;
         MixModeCombo.ItemsSource = MixModes.Select(mode => mode.Title).ToArray();
@@ -163,6 +169,7 @@ public partial class MainWindow : Window
         InputDeviceCombo.SelectionChanged += OnInputDeviceChanged;
         OutputDeviceCombo.SelectionChanged += OnOutputDeviceChanged;
         RefreshButton.Click += OnRefreshDevices;
+        SettingsButton.Click += OnOpenSettings;
         StartButton.Click += OnStart;
         StopButton.Click += OnStop;
         SaveButton.Click += OnSave;
@@ -285,12 +292,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool IsDemoBackend => _engine.Backend is SimulatedAudioBackend;
+
     private void BindStaticValues()
     {
         _loading = true;
         try
         {
-            BackendCombo.SelectedItem = _engine.Backend.Name;
+            BackendCombo.SelectedItem = IsDemoBackend ? null : _engine.Backend.Name;
             RateCombo.SelectedItem = SupportedRates.Contains(_engine.SampleRate)
                 ? _engine.SampleRate
                 : 48000;
@@ -298,6 +307,7 @@ public partial class MainWindow : Window
                 ? _engine.BufferFrames
                 : 1024;
             MixModeCombo.SelectedIndex = 0;
+            DemoBadge.IsVisible = IsDemoBackend;
         }
         finally
         {
@@ -437,6 +447,7 @@ public partial class MainWindow : Window
         UpdateDeviceInfo();
         UpdateButtons();
         UpdateRecordingUi();
+        UpdateDemoBadge();
         UpdateReadout();
     }
 
@@ -571,7 +582,7 @@ public partial class MainWindow : Window
 
     private void OnBackendChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_loading || BackendCombo.SelectedItem is not string backendName)
+        if (_loading || IsDemoBackend || BackendCombo.SelectedItem is not string backendName)
         {
             return;
         }
@@ -598,6 +609,93 @@ public partial class MainWindow : Window
         RefreshDeviceCombos();
         RefreshRoutes();
         ShowStatus("Список устройств обновлён.");
+    }
+
+    private async void OnOpenSettings(object? sender, RoutedEventArgs e)
+    {
+        await OpenSettingsAsync();
+    }
+
+    /// <summary>Открывает окно настроек и применяет выбранный режим.</summary>
+    public async Task OpenSettingsAsync()
+    {
+        var dialog = new SettingsWindow(IsDemoBackend, _demoConfig.Clone());
+        var result = await dialog.ShowDialog<SettingsResult?>(this);
+
+        if (result is null)
+        {
+            return;
+        }
+
+        _demoConfig = result.DemoConfig;
+        ApplyDemoMode(result.DemoEnabled);
+    }
+
+    private void ApplyDemoMode(bool enabled)
+    {
+        try
+        {
+            CloseAllBusWindows();
+
+            if (enabled)
+            {
+                _engine.SetBackend(new SimulatedAudioBackend(_demoConfig));
+                RefreshDeviceCombos();
+                EnsureDefaultInput();
+
+                var demoDevice = _engine.Devices.FirstOrDefault(device => device.IsInput);
+                if (demoDevice is { InputChannels: > 1 } && _engine.Inputs.Count == 1)
+                {
+                    _engine.AddInput(demoDevice, 1, "Вход 2");
+                }
+
+                ShowStatus("Демо-режим включён: используется сигнал конструктора.");
+            }
+            else
+            {
+                if (IsDemoBackend)
+                {
+                    _engine.SetBackend(AudioBackendFactory.Create());
+                    RefreshDeviceCombos();
+                    EnsureDefaultInput();
+                    ShowStatus("Демо-режим выключен: используются реальные устройства.");
+                }
+                else
+                {
+                    ShowStatus("Настройки сохранены.");
+                }
+            }
+
+            _recordingBus = null;
+            RefreshRoutes();
+            UpdateButtons();
+            UpdateDemoBadge();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Не удалось применить настройки: {ex.Message}");
+        }
+    }
+
+    private void UpdateDemoBadge()
+    {
+        DemoBadge.IsVisible = IsDemoBackend;
+        BackendCombo.PlaceholderText = IsDemoBackend ? "Демо-режим" : "Бэкенд";
+
+        _loading = true;
+        try
+        {
+            var names = AudioBackendFactory.AvailableBackendNames;
+            BackendCombo.SelectedItem = IsDemoBackend
+                ? null
+                : names.Contains(_engine.Backend.Name) ? _engine.Backend.Name : null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        BackendCombo.IsEnabled = !IsDemoBackend && !_engine.IsRunning;
     }
 
     private void OnInputDeviceChanged(object? sender, SelectionChangedEventArgs e)
@@ -1156,7 +1254,7 @@ public partial class MainWindow : Window
         ConfiguredMixerButton.IsEnabled = idle;
         OverlayButton.IsEnabled = _engine.Inputs.Count + _engine.VirtualInputs.Count > 0;
 
-        BackendCombo.IsEnabled = idle;
+        BackendCombo.IsEnabled = idle && !IsDemoBackend;
         RateCombo.IsEnabled = idle;
         BufferCombo.IsEnabled = idle;
         InputDeviceCombo.IsEnabled = idle;
@@ -1184,6 +1282,21 @@ public partial class MainWindow : Window
             lines.Add($"  каналов: {input.InputChannels}, частота по умолчанию: {input.DefaultSampleRate} Гц");
             lines.Add($"  возможности: {DescribeCapabilities(input.Capabilities)}");
 
+            var inputChannels = input.Channels
+                .Where(channel => channel.IsInput)
+                .OrderBy(channel => channel.Index)
+                .Take(16)
+                .ToList();
+
+            if (inputChannels.Count > 0)
+            {
+                lines.Add("  физические каналы:");
+                foreach (var channel in inputChannels)
+                {
+                    lines.Add($"    {channel.Index}: {channel.Name} ({channel.JackType})");
+                }
+            }
+
             if (input.IsMonitor)
             {
                 lines.Add("  ! это монитор выхода: сигнал взят из петли, а не с внешнего входа.");
@@ -1200,9 +1313,73 @@ public partial class MainWindow : Window
             lines.Add($"Выход: {output.Name}");
             lines.Add($"  каналов: {output.OutputChannels}, частота по умолчанию: {output.DefaultSampleRate} Гц");
             lines.Add($"  возможности: {DescribeCapabilities(output.Capabilities)}");
+
+            var outputChannels = output.Channels
+                .Where(channel => !channel.IsInput)
+                .OrderBy(channel => channel.Index)
+                .Take(16)
+                .ToList();
+
+            if (outputChannels.Count > 0)
+            {
+                lines.Add("  физические каналы:");
+                foreach (var channel in outputChannels)
+                {
+                    lines.Add($"    {channel.Index}: {channel.Name} ({channel.JackType})");
+                }
+            }
         }
 
         InfoText.Text = string.Join(Environment.NewLine, lines);
+        RefreshPinTable();
+    }
+
+    private void RefreshPinTable()
+    {
+        PinTable.Children.Clear();
+        var device = InputDeviceCombo.SelectedItem as AudioDeviceInfo;
+
+        for (var index = 0; index < 4; index++)
+        {
+            var hasInput = device is { IsInput: true } && index < device.InputChannels;
+            var hasOutput = device is { IsOutput: true } && index < device.OutputChannels;
+            var mode = hasInput && hasOutput ? "RW" : hasInput ? "R" : hasOutput ? "W" : "—";
+            var color = mode switch
+            {
+                "R" => Color.Parse("#49E8B2"),
+                "W" => Color.Parse("#E06A33"),
+                "RW" => Color.Parse("#3F8CE8"),
+                _ => Color.Parse("#798793"),
+            };
+
+            var pinBlock = new TextBlock
+            {
+                Text = (index + 1).ToString(),
+                FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Liberation Mono, DejaVu Sans Mono"),
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.Parse("#B7C3CF")),
+            };
+            var pinBorder = new Border { Child = pinBlock };
+            pinBorder.Classes.Add("pin");
+
+            var modeBlock = new TextBlock
+            {
+                Text = mode,
+                FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Liberation Mono, DejaVu Sans Mono"),
+                FontSize = 11,
+                FontWeight = FontWeight.Bold,
+                Foreground = new SolidColorBrush(color),
+            };
+            var modeBorder = new Border { Child = modeBlock };
+            modeBorder.Classes.Add("pin");
+
+            Grid.SetRow(pinBorder, index);
+            Grid.SetRow(modeBorder, index);
+            Grid.SetColumn(pinBorder, 0);
+            Grid.SetColumn(modeBorder, 1);
+            PinTable.Children.Add(pinBorder);
+            PinTable.Children.Add(modeBorder);
+        }
     }
 
     private static string DescribeCapabilities(DeviceCapabilities capabilities)

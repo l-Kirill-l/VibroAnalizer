@@ -66,10 +66,33 @@ public sealed class EegBandAnalyzer : AnalyzerBase, IAnalyzerView
             return;
         }
 
-        var spectrum = FftProcessor.Compute(samples, sampleRate, WindowKind.Hann);
+        var filtered = new double[samples.Length];
+        var highPass = BiquadFilter.CreateHighPass(sampleRate, 0.5);
+        var lowPass = BiquadFilter.CreateLowPass(sampleRate, 45.0);
+        BiquadFilter? notch50 = sampleRate > 110 ? BiquadFilter.CreateNotch(sampleRate, 50.0, 30.0) : null;
+        BiquadFilter? notch60 = sampleRate > 130 ? BiquadFilter.CreateNotch(sampleRate, 60.0, 30.0) : null;
+
+        for (var i = 0; i < samples.Length; i++)
+        {
+            var value = highPass.Process(samples[i]);
+            value = lowPass.Process(value);
+
+            if (notch50 is not null)
+            {
+                value = notch50.Process(value);
+            }
+
+            if (notch60 is not null)
+            {
+                value = notch60.Process(value);
+            }
+
+            filtered[i] = value;
+        }
+
+        var spectrum = FftProcessor.Compute(filtered, sampleRate, WindowKind.Hann, removeDc: true);
         var frequencies = spectrum.Frequencies;
         var magnitudes = spectrum.Magnitudes;
-
         var powers = new double[Bands.Length];
         var totalPower = 0.0;
 

@@ -15,8 +15,6 @@ public sealed class EngineTests
 
         try
         {
-            Assert.Contains("Демо", AudioBackendFactory.AvailableBackendNames);
-
             var context = SessionContext.FromArgs(new[] { "--session-dir", root });
             using var engine = new AudioEngine(AudioBackendFactory.Create("Демо"), context);
 

@@ -36,7 +36,6 @@ public static class AudioBackendFactory
                 names.Add(WasapiName);
             }
 
-            names.Add(DemoName);
             return names;
         }
     }

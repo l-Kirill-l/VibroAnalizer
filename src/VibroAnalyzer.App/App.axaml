@@ -227,6 +227,14 @@
             <Setter Property="Margin" Value="0,0,0,6" />
         </Style>
 
+        <Style Selector="Border.pin">
+            <Setter Property="Background" Value="#66141A21" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6,3" />
+        </Style>
+
         <Style Selector="TextBlock.route-title">
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />

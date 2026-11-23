@@ -170,6 +170,37 @@ public sealed class VibrationMedicalAnalyzerTests
     }
 
     [Fact]
+    public void PulseRejectsRespirationAndNoise()
+    {
+        const int sampleRate = 200;
+        const int count = 4000; // 20 секунд
+        var samples = new double[count];
+        var random = new Random(42);
+
+        for (var i = 0; i < count; i++)
+        {
+            var time = (double)i / sampleRate;
+            samples[i] = 0.3 * Math.Sin(2.0 * Math.PI * 0.2 * time)
+                + (random.NextDouble() - 0.5) * 0.05;
+        }
+
+        for (var beat = 2; beat < 19; beat++)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var time = (double)i / sampleRate;
+                var offset = (time - beat) / 0.04;
+                samples[i] += 0.7 * Math.Exp(-0.5 * offset * offset);
+            }
+        }
+
+        var analyzer = new PulseAnalyzer();
+        analyzer.Process(samples, sampleRate);
+
+        Assert.InRange(Readout(analyzer, "Пульс"), 55.0, 65.0);
+    }
+
+    [Fact]
     public void EmgRejectsMainsHumAndFindsMedianFrequency()
     {
         const int sampleRate = 2000;
