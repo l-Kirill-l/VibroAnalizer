@@ -46,6 +46,25 @@ public interface IAnalyzerParameterized
 {
     IReadOnlyList<AnalyzerParameter> Parameters { get; }
 }
+
+public sealed record AnalyzerToggle(
+    string Name, Func<bool> Getter, Action<bool> Setter);
+
+public interface IAnalyzerToggleable
+{
+    IReadOnlyList<AnalyzerToggle> Toggles { get; }
+}
+
+public sealed class AnalysisFilterSettings
+{
+    public bool BandPassEnabled { get; set; }
+    public double HighPassHz { get; set; }
+    public double LowPassHz { get; set; }
+    public bool MainsNotchEnabled { get; set; }
+    public bool Notch50Enabled { get; set; }
+    public bool Notch60Enabled { get; set; }
+    public double[] Apply(double[] samples, int sampleRate);
+}
 ```
 
 ## Правила
@@ -57,6 +76,9 @@ public interface IAnalyzerParameterized
 - `GetWindowFrames`: обычно 4096–16384; для медленных процессов можно 8192.
 - Параметры — свойства с разумными значениями по умолчанию; параметры
   создавать в `Parameters` каждый раз заново (или кэшировать).
+- Отключаемые фильтры оформлять через `IAnalyzerToggleable` и
+  `AnalysisFilterSettings`; фильтрация не должна изменять входной массив.
+- В справке обязательно указывать, что меняется при отключении фильтра.
 - Комментарии и пользовательские строки — по-русски.
 - Не менять `.csproj`, `.slnx`, общие файлы, `VibroWaveLab`.
 - Не запускать `dotnet build/test` (сборку делает главный агент).

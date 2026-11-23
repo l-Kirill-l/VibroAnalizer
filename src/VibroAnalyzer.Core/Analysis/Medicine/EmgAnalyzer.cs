@@ -5,13 +5,65 @@ namespace VibroAnalyzer.Core.Analysis.Medicine;
 /// <summary>
 /// ЭМГ: СКЗ, медианная частота, пик и оценка активности мышцы.
 /// </summary>
-public sealed class EmgAnalyzer : AnalyzerBase, IAnalyzerView
+public sealed class EmgAnalyzer : AnalyzerBase, IAnalyzerView, IAnalyzerParameterized, IAnalyzerToggleable
 {
     private const int WindowFrames = 8192;
 
     private volatile double[] _frequencies = Array.Empty<double>();
     private volatile double[] _levelsDb = Array.Empty<double>();
     private volatile AnalyzerReadout[] _readouts = Array.Empty<AnalyzerReadout>();
+    private readonly AnalyzerParameter[] _parameters;
+    private readonly AnalyzerToggle[] _toggles;
+
+    public EmgAnalyzer()
+    {
+        _parameters = new[]
+        {
+            new AnalyzerParameter(
+                "ФВЧ полосы",
+                5.0,
+                100.0,
+                () => Filters.HighPassHz,
+                value => Filters.HighPassHz = value,
+                "Гц"),
+            new AnalyzerParameter(
+                "ФНЧ полосы",
+                100.0,
+                1000.0,
+                () => Filters.LowPassHz,
+                value => Filters.LowPassHz = value,
+                "Гц"),
+        };
+
+        _toggles = new[]
+        {
+            new AnalyzerToggle(
+                "Полосовой фильтр ЭМГ",
+                () => Filters.BandPassEnabled,
+                value => Filters.BandPassEnabled = value),
+            new AnalyzerToggle(
+                "Режекция 50 Гц",
+                () => Filters.Notch50Enabled,
+                value => Filters.Notch50Enabled = value),
+            new AnalyzerToggle(
+                "Режекция 60 Гц",
+                () => Filters.Notch60Enabled,
+                value => Filters.Notch60Enabled = value),
+        };
+    }
+
+    /// <summary>Отключаемые фильтры ЭМГ.</summary>
+    public AnalysisFilterSettings Filters { get; } = new()
+    {
+        HighPassHz = 20.0,
+        LowPassHz = 450.0,
+    };
+
+    /// <inheritdoc />
+    public IReadOnlyList<AnalyzerParameter> Parameters => _parameters;
+
+    /// <inheritdoc />
+    public IReadOnlyList<AnalyzerToggle> Toggles => _toggles;
 
     /// <inheritdoc />
     public override string Title => "ЭМГ";
@@ -54,34 +106,7 @@ public sealed class EmgAnalyzer : AnalyzerBase, IAnalyzerView
         }
 
         var count = samples.Length;
-        var filtered = new double[count];
-
-        // Поверхностная ЭМГ: 20–450 Гц + режекция сетевых 50/60 Гц.
-        // Это убирает DC, дрейф и сетевую наводку до расчёта RMS/спектра.
-        var nyquist = sampleRate * 0.5;
-        var highPass = BiquadFilter.CreateHighPass(sampleRate, Math.Min(20.0, nyquist * 0.5));
-        var lowPass = BiquadFilter.CreateLowPass(sampleRate, Math.Min(450.0, nyquist * 0.9));
-        BiquadFilter? notch50 = nyquist > 55.0 ? BiquadFilter.CreateNotch(sampleRate, 50.0, 30.0) : null;
-        BiquadFilter? notch60 = nyquist > 65.0 ? BiquadFilter.CreateNotch(sampleRate, 60.0, 30.0) : null;
-
-        for (var i = 0; i < count; i++)
-        {
-            var value = highPass.Process(samples[i]);
-            value = lowPass.Process(value);
-
-            if (notch50 is not null)
-            {
-                value = notch50.Process(value);
-            }
-
-            if (notch60 is not null)
-            {
-                value = notch60.Process(value);
-            }
-
-            filtered[i] = value;
-        }
-
+        var filtered = Filters.Apply(samples, sampleRate);
         var rms = SignalMath.Rms(filtered);
         var peak = SignalMath.Peak(filtered);
 

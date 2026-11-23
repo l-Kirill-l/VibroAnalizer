@@ -38,3 +38,15 @@ public interface IAnalyzerParameterized
 {
     IReadOnlyList<AnalyzerParameter> Parameters { get; }
 }
+
+/// <summary>Логический переключатель анализатора (например, фильтр).</summary>
+public sealed record AnalyzerToggle(
+    string Name,
+    Func<bool> Getter,
+    Action<bool> Setter);
+
+/// <summary>Анализатор с отключаемыми настройками.</summary>
+public interface IAnalyzerToggleable
+{
+    IReadOnlyList<AnalyzerToggle> Toggles { get; }
+}

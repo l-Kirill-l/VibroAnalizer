@@ -5,7 +5,7 @@ namespace VibroAnalyzer.Core.Analysis.Medicine;
 /// <summary>
 /// Пульс и RR-интервалы: огибающая, поиск ударов и статистика интервалов.
 /// </summary>
-public sealed class PulseAnalyzer : AnalyzerBase, IAnalyzerView
+public sealed class PulseAnalyzer : AnalyzerBase, IAnalyzerView, IAnalyzerParameterized, IAnalyzerToggleable
 {
     private const int WindowFrames = 16384;
     private const double MinPeakDistanceSeconds = 0.3;
@@ -13,9 +13,68 @@ public sealed class PulseAnalyzer : AnalyzerBase, IAnalyzerView
     private volatile double[] _times = Array.Empty<double>();
     private volatile double[] _envelope = Array.Empty<double>();
     private volatile AnalyzerReadout[] _readouts = Array.Empty<AnalyzerReadout>();
+    private readonly AnalyzerParameter[] _parameters;
+    private readonly AnalyzerToggle[] _toggles;
+
+    public PulseAnalyzer()
+    {
+        _parameters = new[]
+        {
+            new AnalyzerParameter(
+                "ФВЧ полосы",
+                0.1,
+                5.0,
+                () => Filters.HighPassHz,
+                value => Filters.HighPassHz = value,
+                "Гц"),
+            new AnalyzerParameter(
+                "ФНЧ полосы",
+                2.0,
+                20.0,
+                () => Filters.LowPassHz,
+                value => Filters.LowPassHz = value,
+                "Гц"),
+            new AnalyzerParameter(
+                "Срез огибающей",
+                1.0,
+                20.0,
+                () => CutoffHz,
+                value => CutoffHz = value,
+                "Гц"),
+        };
+
+        _toggles = new[]
+        {
+            new AnalyzerToggle(
+                "Полосовой фильтр 0.5–10 Гц",
+                () => Filters.BandPassEnabled,
+                value => Filters.BandPassEnabled = value),
+            new AnalyzerToggle(
+                "Режекция 50 Гц",
+                () => Filters.Notch50Enabled,
+                value => Filters.Notch50Enabled = value),
+            new AnalyzerToggle(
+                "Режекция 60 Гц",
+                () => Filters.Notch60Enabled,
+                value => Filters.Notch60Enabled = value),
+        };
+    }
+
+    /// <summary>Отключаемые фильтры пульсового сигнала.</summary>
+    public AnalysisFilterSettings Filters { get; } = new()
+    {
+        HighPassHz = 0.5,
+        LowPassHz = 10.0,
+    };
 
     /// <summary>Частота среза фильтра огибающей, Гц.</summary>
     public double CutoffHz { get; set; } = 5.0;
+
+    /// <inheritdoc />
+    public IReadOnlyList<AnalyzerParameter> Parameters => _parameters;
+
+    /// <inheritdoc />
+    public IReadOnlyList<AnalyzerToggle> Toggles => _toggles;
 
     /// <inheritdoc />
     public override string Title => "Пульс и RR-интервалы";
@@ -58,30 +117,14 @@ public sealed class PulseAnalyzer : AnalyzerBase, IAnalyzerView
         }
 
         var count = samples.Length;
-        var highPass = BiquadFilter.CreateHighPass(sampleRate, 0.5);
-        var bandLowPass = BiquadFilter.CreateLowPass(sampleRate, 10.0);
-        BiquadFilter? notch50 = sampleRate > 110 ? BiquadFilter.CreateNotch(sampleRate, 50.0, 30.0) : null;
-        BiquadFilter? notch60 = sampleRate > 130 ? BiquadFilter.CreateNotch(sampleRate, 60.0, 30.0) : null;
+        var filtered = Filters.Apply(samples, sampleRate);
         var envelopeFilter = BiquadFilter.CreateLowPass(sampleRate, CutoffHz);
         var envelope = new double[count];
         var times = new double[count];
 
         for (var i = 0; i < count; i++)
         {
-            var value = highPass.Process(samples[i]);
-            value = bandLowPass.Process(value);
-
-            if (notch50 is not null)
-            {
-                value = notch50.Process(value);
-            }
-
-            if (notch60 is not null)
-            {
-                value = notch60.Process(value);
-            }
-
-            envelope[i] = envelopeFilter.Process(Math.Abs(value));
+            envelope[i] = envelopeFilter.Process(Math.Abs(filtered[i]));
             times[i] = (double)i / sampleRate;
         }
 

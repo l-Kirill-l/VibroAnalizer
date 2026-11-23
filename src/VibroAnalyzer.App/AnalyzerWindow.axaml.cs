@@ -53,8 +53,12 @@ public partial class AnalyzerWindow : Window
 
     private void BuildParameters()
     {
-        if (_analyzer is not IAnalyzerParameterized parameterized
-            || parameterized.Parameters.Count == 0)
+        var parameterized = _analyzer as IAnalyzerParameterized;
+        var toggleable = _analyzer as IAnalyzerToggleable;
+        var hasParameters = parameterized is { Parameters.Count: > 0 };
+        var hasToggles = toggleable is { Toggles.Count: > 0 };
+
+        if (!hasParameters && !hasToggles)
         {
             ParametersCard.IsVisible = false;
             return;
@@ -62,38 +66,61 @@ public partial class AnalyzerWindow : Window
 
         ParametersCard.IsVisible = true;
 
-        foreach (var parameter in parameterized.Parameters)
+        if (hasParameters)
         {
-            var label = new TextBlock { Text = parameter.Name, VerticalAlignment = VerticalAlignment.Center };
-            label.Classes.Add("label");
-
-            var box = new NumericUpDown
+            foreach (var parameter in parameterized!.Parameters)
             {
-                Width = 130,
-                Minimum = (decimal)parameter.Minimum,
-                Maximum = (decimal)parameter.Maximum,
-                Increment = Math.Max(0.01m, (decimal)((parameter.Maximum - parameter.Minimum) / 100.0)),
-                FormatString = "0.###",
-                ClipValueToMinMax = true,
-                Value = (decimal)Math.Clamp(parameter.Getter(), parameter.Minimum, parameter.Maximum),
-            };
+                var label = new TextBlock { Text = parameter.Name, VerticalAlignment = VerticalAlignment.Center };
+                label.Classes.Add("label");
 
-            box.ValueChanged += (_, _) =>
-            {
-                if (box.Value is { } value)
+                var box = new NumericUpDown
                 {
-                    parameter.Setter(Math.Clamp((double)value, parameter.Minimum, parameter.Maximum));
-                }
-            };
+                    Width = 130,
+                    Minimum = (decimal)parameter.Minimum,
+                    Maximum = (decimal)parameter.Maximum,
+                    Increment = Math.Max(0.01m, (decimal)((parameter.Maximum - parameter.Minimum) / 100.0)),
+                    FormatString = "0.###",
+                    ClipValueToMinMax = true,
+                    Value = (decimal)Math.Clamp(parameter.Getter(), parameter.Minimum, parameter.Maximum),
+                };
 
-            var unit = new TextBlock { Text = parameter.Units, VerticalAlignment = VerticalAlignment.Center };
-            unit.Classes.Add("hint");
+                box.ValueChanged += (_, _) =>
+                {
+                    if (box.Value is { } value)
+                    {
+                        parameter.Setter(Math.Clamp((double)value, parameter.Minimum, parameter.Maximum));
+                    }
+                };
 
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            row.Children.Add(label);
-            row.Children.Add(box);
-            row.Children.Add(unit);
-            ParametersPanel.Children.Add(row);
+                var unit = new TextBlock { Text = parameter.Units, VerticalAlignment = VerticalAlignment.Center };
+                unit.Classes.Add("hint");
+
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                row.Children.Add(label);
+                row.Children.Add(box);
+                row.Children.Add(unit);
+                ParametersPanel.Children.Add(row);
+            }
+        }
+
+        if (hasToggles)
+        {
+            var filterLabel = new TextBlock { Text = "ФИЛЬТРЫ", VerticalAlignment = VerticalAlignment.Center };
+            filterLabel.Classes.Add("label");
+            ParametersPanel.Children.Add(filterLabel);
+
+            foreach (var toggle in toggleable!.Toggles)
+            {
+                var check = new CheckBox
+                {
+                    Content = toggle.Name,
+                    IsChecked = toggle.Getter(),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+
+                check.IsCheckedChanged += (_, _) => toggle.Setter(check.IsChecked == true);
+                ParametersPanel.Children.Add(check);
+            }
         }
     }
 

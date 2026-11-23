@@ -5,7 +5,7 @@ namespace VibroAnalyzer.Core.Analysis.Medicine;
 /// <summary>
 /// Ритмы ЭЭГ: мощность и доля стандартных частотных полос.
 /// </summary>
-public sealed class EegBandAnalyzer : AnalyzerBase, IAnalyzerView
+public sealed class EegBandAnalyzer : AnalyzerBase, IAnalyzerView, IAnalyzerParameterized, IAnalyzerToggleable
 {
     private const int WindowFrames = 16384;
     private const double MinPower = 1e-24;
@@ -23,6 +23,58 @@ public sealed class EegBandAnalyzer : AnalyzerBase, IAnalyzerView
     private volatile double[] _centers = Array.Empty<double>();
     private volatile double[] _powerDb = Array.Empty<double>();
     private volatile AnalyzerReadout[] _readouts = Array.Empty<AnalyzerReadout>();
+    private readonly AnalyzerParameter[] _parameters;
+    private readonly AnalyzerToggle[] _toggles;
+
+    public EegBandAnalyzer()
+    {
+        _parameters = new[]
+        {
+            new AnalyzerParameter(
+                "ФВЧ полосы",
+                0.1,
+                2.0,
+                () => Filters.HighPassHz,
+                value => Filters.HighPassHz = value,
+                "Гц"),
+            new AnalyzerParameter(
+                "ФНЧ полосы",
+                20.0,
+                100.0,
+                () => Filters.LowPassHz,
+                value => Filters.LowPassHz = value,
+                "Гц"),
+        };
+
+        _toggles = new[]
+        {
+            new AnalyzerToggle(
+                "Полосовой фильтр ЭЭГ",
+                () => Filters.BandPassEnabled,
+                value => Filters.BandPassEnabled = value),
+            new AnalyzerToggle(
+                "Режекция 50 Гц",
+                () => Filters.Notch50Enabled,
+                value => Filters.Notch50Enabled = value),
+            new AnalyzerToggle(
+                "Режекция 60 Гц",
+                () => Filters.Notch60Enabled,
+                value => Filters.Notch60Enabled = value),
+        };
+    }
+
+    /// <summary>Отключаемые фильтры ЭЭГ.</summary>
+    public AnalysisFilterSettings Filters { get; } = new()
+    {
+        HighPassHz = 0.5,
+        LowPassHz = 45.0,
+    };
+
+    /// <inheritdoc />
+    public IReadOnlyList<AnalyzerParameter> Parameters => _parameters;
+
+    /// <inheritdoc />
+    public IReadOnlyList<AnalyzerToggle> Toggles => _toggles;
 
     /// <inheritdoc />
     public override string Title => "Ритмы ЭЭГ";
@@ -66,30 +118,7 @@ public sealed class EegBandAnalyzer : AnalyzerBase, IAnalyzerView
             return;
         }
 
-        var filtered = new double[samples.Length];
-        var highPass = BiquadFilter.CreateHighPass(sampleRate, 0.5);
-        var lowPass = BiquadFilter.CreateLowPass(sampleRate, 45.0);
-        BiquadFilter? notch50 = sampleRate > 110 ? BiquadFilter.CreateNotch(sampleRate, 50.0, 30.0) : null;
-        BiquadFilter? notch60 = sampleRate > 130 ? BiquadFilter.CreateNotch(sampleRate, 60.0, 30.0) : null;
-
-        for (var i = 0; i < samples.Length; i++)
-        {
-            var value = highPass.Process(samples[i]);
-            value = lowPass.Process(value);
-
-            if (notch50 is not null)
-            {
-                value = notch50.Process(value);
-            }
-
-            if (notch60 is not null)
-            {
-                value = notch60.Process(value);
-            }
-
-            filtered[i] = value;
-        }
-
+        var filtered = Filters.Apply(samples, sampleRate);
         var spectrum = FftProcessor.Compute(filtered, sampleRate, WindowKind.Hann, removeDc: true);
         var frequencies = spectrum.Frequencies;
         var magnitudes = spectrum.Magnitudes;

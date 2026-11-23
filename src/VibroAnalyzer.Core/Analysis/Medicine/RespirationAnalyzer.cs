@@ -5,7 +5,7 @@ namespace VibroAnalyzer.Core.Analysis.Medicine;
 /// <summary>
 /// Дыхание: медленный сигнал сглаживается ФНЧ 1 Гц, затем ищутся его экстремумы.
 /// </summary>
-public sealed class RespirationAnalyzer : AnalyzerBase, IAnalyzerView
+public sealed class RespirationAnalyzer : AnalyzerBase, IAnalyzerView, IAnalyzerParameterized, IAnalyzerToggleable
 {
     private const int WindowFrames = 16384;
     private const double MinBreathDistanceSeconds = 0.5;
@@ -13,9 +13,51 @@ public sealed class RespirationAnalyzer : AnalyzerBase, IAnalyzerView
     private volatile double[] _times = Array.Empty<double>();
     private volatile double[] _envelope = Array.Empty<double>();
     private volatile AnalyzerReadout[] _readouts = Array.Empty<AnalyzerReadout>();
+    private readonly AnalyzerParameter[] _parameters;
+    private readonly AnalyzerToggle[] _toggles;
 
-    /// <summary>Частота среза фильтра нижних частот, Гц.</summary>
-    public double CutoffHz { get; set; } = 1.0;
+    public RespirationAnalyzer()
+    {
+        _parameters = new[]
+        {
+            new AnalyzerParameter(
+                "ФВЧ полосы",
+                0.01,
+                0.2,
+                () => Filters.HighPassHz,
+                value => Filters.HighPassHz = value,
+                "Гц"),
+            new AnalyzerParameter(
+                "ФНЧ полосы",
+                0.2,
+                2.0,
+                () => Filters.LowPassHz,
+                value => Filters.LowPassHz = value,
+                "Гц"),
+        };
+
+        _toggles = new[]
+        {
+            new AnalyzerToggle(
+                "Полосовой фильтр дыхания",
+                () => Filters.BandPassEnabled,
+                value => Filters.BandPassEnabled = value),
+        };
+    }
+
+    /// <summary>Отключаемые фильтры дыхательного сигнала.</summary>
+    public AnalysisFilterSettings Filters { get; } = new()
+    {
+        HighPassHz = 0.05,
+        LowPassHz = 1.0,
+        MainsNotchEnabled = false,
+    };
+
+    /// <inheritdoc />
+    public IReadOnlyList<AnalyzerParameter> Parameters => _parameters;
+
+    /// <inheritdoc />
+    public IReadOnlyList<AnalyzerToggle> Toggles => _toggles;
 
     /// <inheritdoc />
     public override string Title => "Дыхание";
@@ -58,16 +100,14 @@ public sealed class RespirationAnalyzer : AnalyzerBase, IAnalyzerView
         }
 
         var count = samples.Length;
-        var highPass = BiquadFilter.CreateHighPass(sampleRate, 0.05);
-        var lowPass = BiquadFilter.CreateLowPass(sampleRate, Math.Min(1.0, CutoffHz));
+        var filtered = Filters.Apply(samples, sampleRate);
         var smoothed = new double[count];
         var times = new double[count];
         var envelope = new double[count];
 
         for (var i = 0; i < count; i++)
         {
-            var value = highPass.Process(samples[i]);
-            smoothed[i] = lowPass.Process(value);
+            smoothed[i] = filtered[i];
             times[i] = (double)i / sampleRate;
         }
 
