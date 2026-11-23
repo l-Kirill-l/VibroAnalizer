@@ -129,6 +129,36 @@ public sealed record AudioPortInfo(
 `W / W / — / R`, для обычного выхода или входа — `W / W / — / —` или
 `R / R / — / —`.
 
+```csharp
+public sealed record AudioInputSpecs(
+    string Kind,
+    bool IsInput,
+    bool IsOutput,
+    double? MaxVoltageRms,
+    double? MaxCurrentMa,
+    double? ImpedanceOhms,
+    double? MinFrequencyHz,
+    double? MaxFrequencyHz,
+    int? BitDepth,
+    string Notes);
+
+public static class AudioInputSpecsCatalog
+{
+    public static AudioInputSpecs For(
+        AudioJackType jackType,
+        bool isInput,
+        bool isOutput,
+        int? bitDepth);
+
+    public static string Describe(AudioInputSpecs specs);
+}
+```
+
+`AudioInputSpecsCatalog` подбирает ориентировочные параметры по типу разъёма:
+микрофонный/гарнитурный (0,1 В СКЗ, ~0,5 мА, ~2 кОм), линейный
+(2 В СКЗ, ~0,1 мА, ~10 кОм), выход (параметры входа неприменимы) и цифровой
+(аналоговые параметры неприменимы).
+
 ## Audio abstractions
 
 ```csharp

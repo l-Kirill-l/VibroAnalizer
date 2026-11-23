@@ -244,12 +244,6 @@
             <Setter Property="Margin" Value="0,2,0,2" />
         </Style>
 
-        <Style Selector="ListBox.channels">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0" />
-        </Style>
-
         <Style Selector="TextBlock.route-title">
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />

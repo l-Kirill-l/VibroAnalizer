@@ -149,46 +149,16 @@
                                 <TextBlock Classes="module-label" Text="ВЫБРАННОЕ УСТРОЙСТВО" />
                                 <TextBlock x:Name="InfoText" Classes="hint" />
 
-                                <TextBlock Classes="module-label" Text="КАНАЛЫ И РАЗЪЁМЫ"
+                                <TextBlock Classes="module-label" Text="РАЗЪЁМЫ И ВСТРОЕННАЯ АППАРАТУРА"
                                            Margin="0,4,0,0" />
-                                <ListBox x:Name="ChannelList" Classes="channels"
-                                         MinHeight="36" MaxHeight="180"
-                                         SelectionMode="Single">
-                                    <ListBox.ItemContainerTheme>
-                                        <ControlTheme TargetType="ListBoxItem">
-                                            <Setter Property="Background" Value="#66141A21" />
-                                            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
-                                            <Setter Property="BorderThickness" Value="1" />
-                                            <Setter Property="CornerRadius" Value="6" />
-                                            <Setter Property="Padding" Value="8,5" />
-                                            <Setter Property="Margin" Value="0,0,0,3" />
-                                            <Setter Property="Template">
-                                                <ControlTemplate>
-                                                    <Border Background="{TemplateBinding Background}"
-                                                            BorderBrush="{TemplateBinding BorderBrush}"
-                                                            BorderThickness="{TemplateBinding BorderThickness}"
-                                                            CornerRadius="{TemplateBinding CornerRadius}"
-                                                            Padding="{TemplateBinding Padding}">
-                                                        <ContentPresenter
-                                                            Content="{TemplateBinding Content}"
-                                                            ContentTemplate="{TemplateBinding ContentTemplate}" />
-                                                    </Border>
-                                                </ControlTemplate>
-                                            </Setter>
-                                            <Style Selector="^:pointerover">
-                                                <Setter Property="Background" Value="#33232D38" />
-                                                <Setter Property="BorderBrush" Value="{StaticResource HairlineStrongBrush}" />
-                                            </Style>
-                                            <Style Selector="^:selected">
-                                                <Setter Property="Background" Value="#33233A44" />
-                                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrightBrush}" />
-                                            </Style>
-                                        </ControlTheme>
-                                    </ListBox.ItemContainerTheme>
-                                </ListBox>
+                                <ComboBox x:Name="ChannelCombo"
+                                          HorizontalAlignment="Stretch"
+                                          MaxDropDownHeight="360"
+                                          PlaceholderText="Выберите канал или разъём" />
+                                <TextBlock x:Name="ChannelSpecsText" Classes="hint" />
                                 <TextBlock x:Name="ChannelHint" Classes="hint" />
 
-                                <TextBlock Classes="module-label" Text="ПИНЫ ВЫБРАННОГО КАНАЛА"
+                                <TextBlock Classes="module-label" Text="ПИНЫ ВЫБРАННОГО РАЗЪЁМА"
                                            Margin="0,4,0,0" />
                                 <Border x:Name="PinTableBorder" Classes="pin-table">
                                     <StackPanel Spacing="6">
