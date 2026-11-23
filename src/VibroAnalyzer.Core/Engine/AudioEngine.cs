@@ -144,6 +144,7 @@ public sealed class AudioEngine : IDisposable
         {
             EnsureStopped();
             ValidateInputDevice(device, physicalChannel);
+            ValidatePortConflict(_inputs.Select(input => input.DeviceId), device);
 
             bus = new InputBus(
                 name ?? $"Вход {_inputs.Count + 1}",
@@ -195,6 +196,7 @@ public sealed class AudioEngine : IDisposable
         {
             EnsureStopped();
             ValidateOutputDevice(device, physicalChannel);
+            ValidatePortConflict(_outputs.Select(output => output.DeviceId), device);
 
             bus = new OutputBus(
                 name ?? $"Выход {_outputs.Count + 1}",
@@ -647,10 +649,11 @@ public sealed class AudioEngine : IDisposable
 
         DeviceStreamGroup GetGroup(AudioDeviceInfo device)
         {
-            if (!groups.TryGetValue(device.Id, out var group))
+            var key = device.EffectiveStreamId;
+            if (!groups.TryGetValue(key, out var group))
             {
                 group = new DeviceStreamGroup(device);
-                groups.Add(device.Id, group);
+                groups.Add(key, group);
             }
 
             return group;
@@ -663,7 +666,13 @@ public sealed class AudioEngine : IDisposable
                     $"Устройство входа «{input.DeviceId}» больше недоступно.");
 
             ValidateInputDevice(device, input.PhysicalChannel);
-            GetGroup(device).Inputs.Add(input);
+            var group = GetGroup(device);
+            if (!string.IsNullOrWhiteSpace(device.PortId))
+            {
+                group.InputPortId ??= device.PortId;
+            }
+
+            group.Inputs.Add(input);
         }
 
         foreach (var output in _outputs)
@@ -673,7 +682,13 @@ public sealed class AudioEngine : IDisposable
                     $"Устройство выхода «{output.DeviceId}» больше недоступно.");
 
             ValidateOutputDevice(device, output.PhysicalChannel);
-            GetGroup(device).Outputs.Add(output);
+            var group = GetGroup(device);
+            if (!string.IsNullOrWhiteSpace(device.PortId))
+            {
+                group.OutputPortId ??= device.PortId;
+            }
+
+            group.Outputs.Add(output);
         }
 
         return groups.Values.ToList();
@@ -685,9 +700,33 @@ public sealed class AudioEngine : IDisposable
         var hasInput = group.Inputs.Count > 0;
         var hasOutput = group.Outputs.Count > 0;
 
+        if (_backend is IAudioPortControl portControl)
+        {
+            var streamId = device.EffectiveStreamId;
+
+            if (hasInput
+                && !string.IsNullOrWhiteSpace(group.InputPortId)
+                && !portControl.TrySelectPort(streamId, group.InputPortId, true, out var inputError))
+            {
+                ErrorOccurred?.Invoke(
+                    this,
+                    $"Устройство «{device.Name}»: не удалось активировать входной разъём: {inputError}");
+            }
+
+            if (hasOutput
+                && !string.IsNullOrWhiteSpace(group.OutputPortId)
+                && !portControl.TrySelectPort(streamId, group.OutputPortId, false, out var outputError))
+            {
+                ErrorOccurred?.Invoke(
+                    this,
+                    $"Устройство «{device.Name}»: не удалось активировать выходной разъём: {outputError}");
+            }
+        }
+
+        var streamIdForOptions = device.EffectiveStreamId;
         var options = new AudioStreamOptions(
-            hasInput ? device.Id : null,
-            hasOutput ? device.Id : null,
+            hasInput ? streamIdForOptions : null,
+            hasOutput ? streamIdForOptions : null,
             SampleRate,
             hasInput ? Math.Clamp(device.InputChannels, 1, 32) : 0,
             hasOutput ? Math.Clamp(device.OutputChannels, 1, 32) : 0,
@@ -882,9 +921,35 @@ public sealed class AudioEngine : IDisposable
         return null;
     }
 
-    private static void ValidateInputDevice(AudioDeviceInfo device, int physicalChannel)
+    private void ValidatePortConflict(IEnumerable<string> existingDeviceIds, AudioDeviceInfo device)
     {
-        if (!device.IsInput || device.InputChannels <= 0)
+        if (string.IsNullOrWhiteSpace(device.PortId))
+        {
+            return;
+        }
+
+        foreach (var existingId in existingDeviceIds)
+        {
+            var existing = FindDevice(existingId);
+            if (existing is null
+                || !string.Equals(
+                    existing.EffectiveStreamId,
+                    device.EffectiveStreamId,
+                    StringComparison.Ordinal)
+                || string.IsNullOrWhiteSpace(existing.PortId)
+                || string.Equals(existing.PortId, device.PortId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            throw new InvalidOperationException(
+                $"Нельзя одновременно использовать разные разъёмы одного устройства "
+                + $"«{device.Name}». Выберите один разъём.");
+        }
+    }
+
+    private static void ValidateInputDevice(AudioDeviceInfo device, int physicalChannel)
+    {        if (!device.IsInput || device.InputChannels <= 0)
         {
             throw new ArgumentException($"Устройство «{device.Name}» не имеет входа.");
         }
@@ -998,6 +1063,12 @@ public sealed class AudioEngine : IDisposable
         public List<InputBus> Inputs { get; } = new();
 
         public List<OutputBus> Outputs { get; } = new();
+
+        /// <summary>Выбранный входной разъём общего потока.</summary>
+        public string? InputPortId { get; set; }
+
+        /// <summary>Выбранный выходной разъём общего потока.</summary>
+        public string? OutputPortId { get; set; }
 
         public IAudioStream? Stream { get; set; }
 

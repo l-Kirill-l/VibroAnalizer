@@ -287,66 +287,131 @@ public sealed class PipeWireAudioBackend : IAudioBackend, IAudioPortControl
                 });
 
             var isMicrophone = searchText.Contains("mic", StringComparison.OrdinalIgnoreCase);
-            var jackType = activeRoute?.JackType
-                ?? (isInput
-                    ? (isMicrophone ? AudioJackType.Microphone : AudioJackType.LineIn)
-                    : AudioJackType.LineOut);
-
-            var channelInfos = new List<AudioChannelInfo>(channels);
-            for (var i = 0; i < channels; i++)
-            {
-                var channelName = DescribeChannelName(
-                    i < channelNames.Length ? channelNames[i] : "",
-                    i);
-                channelInfos.Add(new AudioChannelInfo(i, channelName, isInput, jackType));
-            }
-
+            var nodeNick = Clean(GetString(properties, "node.nick"));
+            var controllerName = !string.IsNullOrWhiteSpace(nodeNick)
+                                 && !description.Contains(nodeNick, StringComparison.OrdinalIgnoreCase)
+                ? nodeNick
+                : description;
+            var bitDepth = ParseBitDepth(GetString(properties, "alsa.resolution_bits"));
+            var supportsDuplex = card is not null
+                                 && card.Routes.Any(route => route.IsInput)
+                                 && card.Routes.Any(route => !route.IsInput);
             var ports = !isMonitor && card is { Routes.Count: > 0 }
                 ? AudioPortTopology.Build(card.Routes)
                 : Array.Empty<AudioPortInfo>();
 
-            var nodeNick = Clean(GetString(properties, "node.nick"));
-            var displayName = MakeUniqueName(
-                devices,
-                BuildDeviceName(isInput, isMonitor, description, nodeNick));
-
-            var isDigital = jackType is AudioJackType.Digital or AudioJackType.Monitor;
-            var supportsDuplex = card is not null
-                                 && card.Routes.Any(route => route.IsInput)
-                                 && card.Routes.Any(route => !route.IsInput);
-
-            devices.Add(new AudioDeviceInfo(
-                id,
-                displayName,
-                BackendName,
-                IsInput: isInput,
-                IsOutput: !isInput,
-                InputChannels: isInput ? channels : 0,
-                OutputChannels: isInput ? 0 : channels,
-                DefaultSampleRate,
-                SampleRates,
-                channelInfos,
-                new DeviceCapabilities(
-                    SupportsDuplex: supportsDuplex,
-                    IsAcCoupled: !isDigital,
-                    MaxInputVoltageRms: isDigital ? null : 1.0,
-                    SupportsExclusiveMode: false,
-                    SupportsLoopback: true,
-                    SupportsChannelMapping: true,
-                    Notes: isDigital
-                        ? "Цифровой интерфейс: параметры 3,5-мм аналогового входа неприменимы."
-                        : "Раздельные потоки входа/выхода; возможен дрейф частоты — используйте ресинхронизацию.",
-                    MaxInputCurrentMa: isDigital ? null : 0.1,
-                    InputImpedanceOhms: isDigital ? null : 10000,
-                    MinFrequencyHz: 20,
-                    MaxFrequencyHz: Math.Min(20000, DefaultSampleRate * 0.5),
-                    BitDepth: ParseBitDepth(GetString(properties, "alsa.resolution_bits"))),
-                IsMonitor: isMonitor)
+            void AddDevice(
+                string deviceId,
+                string streamId,
+                string portId,
+                string displayName,
+                AudioJackType jackType)
             {
-                CardId = cardName,
-                ActivePortId = activePortId,
-                Ports = ports,
-            });
+                var isDigital = jackType is AudioJackType.Digital or AudioJackType.Monitor;
+                var channelInfos = new List<AudioChannelInfo>(channels);
+
+                for (var index = 0; index < channels; index++)
+                {
+                    var channelName = DescribeChannelName(
+                        index < channelNames.Length ? channelNames[index] : "",
+                        index);
+                    channelInfos.Add(new AudioChannelInfo(
+                        index,
+                        channelName,
+                        isInput,
+                        jackType));
+                }
+
+                devices.Add(new AudioDeviceInfo(
+                    deviceId,
+                    displayName,
+                    BackendName,
+                    IsInput: isInput,
+                    IsOutput: !isInput,
+                    InputChannels: isInput ? channels : 0,
+                    OutputChannels: isInput ? 0 : channels,
+                    DefaultSampleRate,
+                    SampleRates,
+                    channelInfos,
+                    new DeviceCapabilities(
+                        SupportsDuplex: supportsDuplex,
+                        IsAcCoupled: !isDigital,
+                        MaxInputVoltageRms: isDigital ? null : 1.0,
+                        SupportsExclusiveMode: false,
+                        SupportsLoopback: true,
+                        SupportsChannelMapping: true,
+                        Notes: isDigital
+                            ? "Цифровой интерфейс: параметры 3,5-мм аналогового входа неприменимы."
+                            : "Раздельные потоки входа/выхода; возможен дрейф частоты — используйте ресинхронизацию.",
+                        MaxInputCurrentMa: isDigital ? null : 0.1,
+                        InputImpedanceOhms: isDigital ? null : 10000,
+                        MinFrequencyHz: 20,
+                        MaxFrequencyHz: Math.Min(20000, DefaultSampleRate * 0.5),
+                        BitDepth: bitDepth),
+                    IsMonitor: isMonitor)
+                {
+                    CardId = cardName,
+                    StreamId = streamId,
+                    PortId = portId,
+                    ControllerName = controllerName,
+                    ActivePortId = activePortId,
+                    Ports = ports,
+                });
+            }
+
+            if (isMonitor)
+            {
+                AddDevice(
+                    id,
+                    streamId: id,
+                    portId: "",
+                    displayName: MakeUniqueName(
+                        devices,
+                        BuildDeviceName(isInput, isMonitor: true, description, nodeNick)),
+                    AudioJackType.Monitor);
+                continue;
+            }
+
+            var routes = card?.Routes
+                .Where(route => route.IsInput == isInput)
+                .ToList() ?? new List<AudioPortRoute>();
+
+            if (routes.Count == 0)
+            {
+                var jackType = activeRoute?.JackType
+                    ?? (isInput
+                        ? (isMicrophone ? AudioJackType.Microphone : AudioJackType.LineIn)
+                        : AudioJackType.LineOut);
+
+                AddDevice(
+                    id,
+                    streamId: id,
+                    portId: "",
+                    displayName: MakeUniqueName(
+                        devices,
+                        BuildDeviceName(isInput, isMonitor: false, description, nodeNick)),
+                    jackType);
+                continue;
+            }
+
+            // Один физический разъём — одно логическое устройство в основном списке.
+            // Поток у них общий (StreamId), но выбранный порт различается.
+            foreach (var route in routes)
+            {
+                AddDevice(
+                    $"{id}#{route.Id}",
+                    streamId: id,
+                    portId: route.Id,
+                    displayName: MakeUniqueName(
+                        devices,
+                        BuildDeviceName(
+                            isInput,
+                            isMonitor: false,
+                            description,
+                            nodeNick,
+                            route.Name)),
+                    route.JackType);
+            }
         }
     }
 
@@ -354,18 +419,24 @@ public sealed class PipeWireAudioBackend : IAudioBackend, IAudioPortControl
         bool isInput,
         bool isMonitor,
         string description,
-        string nodeNick)
+        string nodeNick,
+        string? portName = null)
     {
         var prefix = isMonitor ? "Монитор" : isInput ? "Вход" : "Выход";
-        var name = $"{prefix} · {description}";
+        var parts = new List<string> { prefix };
 
-        if (!string.IsNullOrWhiteSpace(nodeNick)
-            && !description.Contains(nodeNick, StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(portName))
         {
-            name = $"{prefix} · {nodeNick} · {description}";
+            parts.Add(portName);
+        }
+        else if (!string.IsNullOrWhiteSpace(nodeNick)
+                 && !description.Contains(nodeNick, StringComparison.OrdinalIgnoreCase))
+        {
+            parts.Add(nodeNick);
         }
 
-        return name;
+        parts.Add(description);
+        return string.Join(" · ", parts);
     }
 
     private static string MakeUniqueName(List<AudioDeviceInfo> devices, string name)

@@ -762,7 +762,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var portChanged = TryActivateSelectedPortForRouting(device, isInput: true);
+            var portChanged = TryActivateDevicePort(device, isInput: true);
             _engine.AddInput(device, ReadChannel(InputChannelBox));
 
             if (portChanged)
@@ -787,7 +787,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var portChanged = TryActivateSelectedPortForRouting(device, isInput: false);
+            var portChanged = TryActivateDevicePort(device, isInput: false);
             _engine.AddOutput(device, ReadChannel(OutputChannelBox));
 
             if (portChanged)
@@ -1396,8 +1396,24 @@ public partial class MainWindow : Window
                     ? $"port:{device.Id}|{port.Id}"
                     : $"port:{device.CardId}|{port.Id}";
 
-                var inputDevice = device.IsInput && port.IsInput ? device : null;
-                var outputDevice = device.IsOutput && port.IsOutput ? device : null;
+                var inputDevice = device.IsInput
+                                  && port.IsInput
+                                  && !string.IsNullOrWhiteSpace(device.PortId)
+                                  && string.Equals(
+                                      device.PortId,
+                                      GetPortDirectionId(port, isInput: true),
+                                      StringComparison.Ordinal)
+                    ? device
+                    : null;
+                var outputDevice = device.IsOutput
+                                   && port.IsOutput
+                                   && !string.IsNullOrWhiteSpace(device.PortId)
+                                   && string.Equals(
+                                       device.PortId,
+                                       GetPortDirectionId(port, isInput: false),
+                                       StringComparison.Ordinal)
+                    ? device
+                    : null;
 
                 if (byId.TryGetValue(key, out var index))
                 {
@@ -1462,10 +1478,24 @@ public partial class MainWindow : Window
             OutputDevice: isOutput ? device : null);
     }
 
+    private static string GetPortDirectionId(AudioPortInfo port, bool isInput)
+    {
+        var ids = port.Id.Split('|', StringSplitOptions.RemoveEmptyEntries);
+        if (ids.Length == 2)
+        {
+            return isInput ? ids[1] : ids[0];
+        }
+
+        return port.Id;
+    }
+
     private static string BuildPortDisplay(AudioPortInfo port, AudioDeviceInfo device)
     {
         var modes = port.DirectionSummary.Replace(" ", "");
-        return $"{GetShortDeviceName(device)} · {port.Name} ({modes})";
+        var controller = string.IsNullOrWhiteSpace(device.ControllerName)
+            ? GetShortDeviceName(device)
+            : device.ControllerName;
+        return $"{port.Name} ({modes}) · {controller}";
     }
 
     private static string GetShortDeviceName(AudioDeviceInfo device)
@@ -1505,8 +1535,12 @@ public partial class MainWindow : Window
         var input = entry.InputDevice;
         var output = entry.OutputDevice;
         var primary = input ?? output;
-        var shortName = primary is null ? entry.Display : GetShortDeviceName(primary);
-        var lines = new List<string> { shortName };
+        var title = primary is null
+            ? entry.Display
+            : string.IsNullOrWhiteSpace(primary.ControllerName)
+                ? GetShortDeviceName(primary)
+                : primary.ControllerName;
+        var lines = new List<string> { title };
 
         var specs = new List<string>();
         if (input is not null)
@@ -1809,12 +1843,12 @@ public partial class MainWindow : Window
         {
             if (entry.OutputDevice is not null)
             {
-                result.Add((entry.OutputDevice.Id, ids[0], false));
+                result.Add((entry.OutputDevice.EffectiveStreamId, ids[0], false));
             }
 
             if (entry.InputDevice is not null)
             {
-                result.Add((entry.InputDevice.Id, ids[1], true));
+                result.Add((entry.InputDevice.EffectiveStreamId, ids[1], true));
             }
 
             return result;
@@ -1822,62 +1856,38 @@ public partial class MainWindow : Window
 
         if (port.IsInput && entry.InputDevice is not null)
         {
-            result.Add((entry.InputDevice.Id, ids[0], true));
+            result.Add((entry.InputDevice.EffectiveStreamId, ids[0], true));
         }
 
         if (port.IsOutput && entry.OutputDevice is not null)
         {
-            result.Add((entry.OutputDevice.Id, ids[0], false));
+            result.Add((entry.OutputDevice.EffectiveStreamId, ids[0], false));
         }
 
         return result;
     }
 
-    private bool TryActivateSelectedPortForRouting(AudioDeviceInfo device, bool isInput)
+    private bool TryActivateDevicePort(AudioDeviceInfo device, bool isInput)
     {
         if (_engine.IsRunning
             || _engine.Backend is not IAudioPortControl control
-            || SelectedChannelEntry is not { Port: { } port } entry)
+            || string.IsNullOrWhiteSpace(device.PortId))
         {
             return false;
         }
 
-        var targetDevice = isInput ? entry.InputDevice : entry.OutputDevice;
-        if (targetDevice is null || !SameCard(targetDevice, device))
+        if (control.TrySelectPort(
+                device.EffectiveStreamId,
+                device.PortId,
+                isInput,
+                out var error))
         {
-            return false;
+            return true;
         }
 
-        var targets = ResolvePortActivationTargets(entry)
-            .Where(target => target.IsInput == isInput)
-            .ToList();
-        var activated = false;
-
-        foreach (var target in targets)
-        {
-            if (control.TrySelectPort(target.DeviceId, target.PortId, target.IsInput, out var error))
-            {
-                activated = true;
-            }
-            else
-            {
-                ShowStatus($"Разъём «{port.Name}» не переключён: {error}. "
-                           + "Будет использован активный разъём.");
-            }
-        }
-
-        return activated;
-    }
-
-    private static bool SameCard(AudioDeviceInfo first, AudioDeviceInfo second)
-    {
-        if (!string.IsNullOrWhiteSpace(first.CardId)
-            && !string.IsNullOrWhiteSpace(second.CardId))
-        {
-            return string.Equals(first.CardId, second.CardId, StringComparison.Ordinal);
-        }
-
-        return string.Equals(first.Id, second.Id, StringComparison.Ordinal);
+        ShowStatus($"Разъём «{device.Name}» не переключён: {error}. "
+                   + "Будет использован активный разъём.");
+        return false;
     }
 
     private void UpdateSessionInfo()

@@ -97,6 +97,10 @@ public sealed record AudioDeviceInfo(
 {
     public bool IsDuplex { get; }
     public string CardId { get; init; }
+    public string StreamId { get; init; }
+    public string PortId { get; init; }
+    public string ControllerName { get; init; }
+    public string EffectiveStreamId { get; }
     public string ActivePortId { get; init; }
     public IReadOnlyList<AudioPortInfo> Ports { get; init; }
     public override string ToString();
