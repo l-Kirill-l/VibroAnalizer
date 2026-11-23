@@ -32,12 +32,14 @@ public partial class App : Application
 
             var openWindows = ReadOption(desktop.Args ?? Array.Empty<string>(), "--open");
             var autoStart = HasFlag(desktop.Args ?? Array.Empty<string>(), "--start");
+            var replayPath = ReadOption(desktop.Args ?? Array.Empty<string>(), "--replay");
 
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             var mainWindow = new MainWindow(_engine, session);
             desktop.MainWindow = mainWindow;
 
-            if (demo || !string.IsNullOrWhiteSpace(openWindows) || autoStart)
+            if (demo || !string.IsNullOrWhiteSpace(openWindows) || autoStart
+                || !string.IsNullOrWhiteSpace(replayPath))
             {
                 mainWindow.Opened += (_, _) =>
                 {
@@ -49,6 +51,11 @@ public partial class App : Application
                     if (!string.IsNullOrWhiteSpace(openWindows))
                     {
                         mainWindow.OpenAnalyzerWindows(openWindows);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(replayPath))
+                    {
+                        mainWindow.OpenReplay(replayPath);
                     }
 
                     if (autoStart)

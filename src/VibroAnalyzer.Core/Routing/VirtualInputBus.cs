@@ -13,7 +13,7 @@ namespace VibroAnalyzer.Core.Routing;
 /// </summary>
 public sealed class VirtualInputBus : ISignalBus, IDisposable
 {
-    private const int HistorySeconds = 5;
+    private const int HistorySeconds = 20;
     private const int MaxQueueSeconds = 2;
     private const int MaxChunkPerSecond = 50;
 

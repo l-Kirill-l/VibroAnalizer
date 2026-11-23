@@ -53,6 +53,7 @@ public partial class SpectrumWindow : Window
         BoundText.Text = string.IsNullOrWhiteSpace(busName)
             ? "Шина не задана"
             : $"Шина: {busName}";
+        HelpUi.Attach(HelpButton, analyzer.Help);
 
         FftSizeBox.ItemsSource = FftSizes;
         WindowBox.ItemsSource = WindowNames;
@@ -142,7 +143,7 @@ public partial class SpectrumWindow : Window
 
         PlotTheme.Apply(PlotView.Plot);
         PlotView.Plot.XLabel("Частота, Гц");
-        PlotView.Plot.YLabel("Уровень, dBFS");
+        PlotView.Plot.YLabel("Уровень, дБFS (ампл.)");
 
         _timer = new DispatcherTimer
         {

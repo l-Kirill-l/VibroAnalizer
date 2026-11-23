@@ -96,6 +96,22 @@
 
                         <Border Classes="card">
                             <StackPanel Spacing="10">
+                                <TextBlock Classes="module-label" Text="ЗАПИСЬ И АРХИВ" />
+                                <TextBlock Classes="hint"
+                                           Text="Можно записать всю сессию (входы, демодуляторы, выходы) или отдельный датчик/микшер. Запись сохраняется в папку сессии и открывается для просмотра с перемоткой и скоростью." />
+                                <WrapPanel>
+                                    <Button x:Name="RecordSessionButton" Content="Записать сессию"
+                                            Classes="primary" Margin="0,0,8,0" MinWidth="160" />
+                                    <Button x:Name="OpenRecordingButton" Content="Открыть запись..."
+                                            MinWidth="150" />
+                                </WrapPanel>
+                                <TextBlock x:Name="RecordingStatusText" Classes="hint"
+                                           Text="Запись не ведётся." />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel Spacing="10">
                                 <TextBlock Classes="module-label" Text="МИКШЕРЫ И ОБЪЕДИНЕНИЕ ДАТЧИКОВ" />
                                 <TextBlock Classes="hint"
                                            Text="Виртуальный вход объединяет несколько датчиков: среднее, сумма, разность, минимум/максимум или НЧ+ВЧ полосы. К нему подключаются обычные окна анализаторов." />
@@ -108,7 +124,8 @@
                                                    Minimum="10" Maximum="20000" Increment="10"
                                                    FormatString="0" ClipValueToMinMax="True" Value="1000" />
                                     <Button x:Name="AddMixerButton" Content="Смешать все входы" Margin="0,0,8,0" />
-                                    <Button x:Name="AddBandMergeButton" Content="Объединить НЧ + ВЧ" />
+                                    <Button x:Name="AddBandMergeButton" Content="Объединить НЧ + ВЧ" Margin="0,0,8,0" />
+                                    <Button x:Name="ConfiguredMixerButton" Content="Выбрать каналы..." />
                                 </WrapPanel>
 
                                 <StackPanel x:Name="VirtualPanel" />

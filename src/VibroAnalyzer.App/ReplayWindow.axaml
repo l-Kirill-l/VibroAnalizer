@@ -1,0 +1,54 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="820"
+        x:Class="VibroAnalyzer.App.ReplayWindow"
+        Title="Просмотр записи"
+        Width="1100" Height="820"
+        MinWidth="860" MinHeight="600">
+
+    <Border Classes="chassis" Margin="12">
+        <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Spacing="3" Margin="0,0,0,12">
+                <TextBlock Classes="tag" Text="АРХИВ · ВОСПРОИЗВЕДЕНИЕ" />
+                <TextBlock Classes="hero" Text="Просмотр записи" FontSize="22" />
+                <TextBlock x:Name="SubtitleText" Classes="subtitle"
+                           Text="Данные берутся из сохранённой сессии. Доступны перемотка, пауза и изменение скорости." />
+                <TextBlock x:Name="BoundText" Classes="hint" Text="Запись не загружена" />
+            </StackPanel>
+
+            <Border DockPanel.Dock="Top" Classes="card" Padding="12" Margin="0,0,0,12">
+                <StackPanel Spacing="9">
+                    <WrapPanel>
+                        <Button x:Name="PlayPauseButton" Content="Играть" Classes="primary"
+                                MinWidth="100" Margin="0,0,8,0" />
+                        <Button x:Name="StopButton" Content="Стоп" MinWidth="90" Margin="0,0,14,0" />
+
+                        <TextBlock Classes="label" Text="СКОРОСТЬ" Margin="0,0,7,0" />
+                        <ComboBox x:Name="SpeedCombo" Width="110" Margin="0,0,14,0" />
+
+                        <TextBlock x:Name="TimeText" Classes="value" Text="00:00.0 / 00:00.0"
+                                   VerticalAlignment="Center" />
+                    </WrapPanel>
+
+                    <Slider x:Name="PositionSlider" Minimum="0" Maximum="1"
+                            SmallChange="0.01" LargeChange="1" />
+                </StackPanel>
+            </Border>
+
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12">
+                    <Border Classes="card">
+                        <StackPanel Spacing="9">
+                            <TextBlock Classes="module-label" Text="ЗАПИСАННЫЕ ШИНЫ" />
+                            <TextBlock Classes="hint"
+                                       Text="Для каждой шины можно открыть осциллограф, спектр, каталог анализаторов или общее наложение." />
+                            <StackPanel x:Name="BusesPanel" Spacing="0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</Window>

@@ -467,11 +467,62 @@ public sealed class AudioEngine : IDisposable
     public void RemoveVirtualInput(VirtualInputBus bus);
     public void Start();
     public void Stop();
+    public bool IsRecording { get; }
+    public string? RecordingDirectory { get; }
+    public void StartRecording(string? name = null, IEnumerable<ISignalBus>? buses = null, bool includeOutputs = false);
+    public string? StopRecording();
     public string SaveMeasurement();
     public void SetBackend(IAudioBackend backend);
     public void Dispose();
 }
 ```
+
+## Recording / playback
+
+```csharp
+namespace VibroAnalyzer.Core.Recording;
+
+public sealed class RecordingTarget
+{
+    public static RecordingTarget ForBus(ISignalBus bus);
+    public static RecordingTarget ForOutput(OutputBus output);
+    public RecordingBusInfo Info { get; }
+}
+
+public sealed class SessionRecorder : IDisposable
+{
+    public SessionRecorder(string directory, int sampleRate, IEnumerable<RecordingTarget> targets);
+    public string Directory { get; }
+    public bool IsRecording { get; }
+    public void Start();
+    public string Stop();
+}
+
+namespace VibroAnalyzer.Core.Playback;
+
+public sealed class PlaybackSession : IDisposable
+{
+    public static PlaybackSession Load(string directory);
+    public string Directory { get; }
+    public string Name { get; }
+    public int SampleRate { get; }
+    public TimeSpan Duration { get; }
+    public TimeSpan Position { get; }
+    public double Speed { get; set; }
+    public bool IsPlaying { get; }
+    public IReadOnlyList<PlaybackBus> Buses { get; }
+    public void Play();
+    public void Pause();
+    public void Stop();
+    public void Seek(TimeSpan position);
+}
+
+public sealed class PlaybackBus : ISignalBus, IDisposable
+{
+    public string Kind { get; }
+}
+```
+
 
 Правила:
 - Изменять маршруты можно только при остановленном измерении.
@@ -510,7 +561,16 @@ public static class AudioBackendFactory
 - `SpectrumWindow(SpectrumAnalyzer analyzer, string? busName = null)`
 - `ModulationWindow(ModulationChain modulation, string? busName = null)`
 - `DemodulationWindow(DemodulationChain demodulation, string? busName = null)`
+- `AnalyzerWindow(AnalyzerBase analyzer, string? busName = null)` — универсальное окно
+  с описанием, параметрами, показаниями и кнопкой «?».
+- `AnalyzerCatalogWindow(ISignalBus bus)` — категории и мини-описания.
+- `MixerWindow(IReadOnlyList<ISignalBus> sources)` — выбор конкретных каналов,
+  усиления и полосы.
 - `OverlayWindow(IReadOnlyList<ISignalBus> buses)` — наложение временных форм и спектров.
+- `ReplayWindow(PlaybackSession session)` — транспорт, перемотка и скорость.
+
+`OutputBus` также реализует `ISignalBus`, поэтому осциллограф, спектр и каталог
+анализаторов можно открывать для выходных (модулированных) сигналов.
 
 Окна анализаторов — отдельные `Window`. Для одной шины можно открыть несколько
 окон; каждое окно осциллографа/спектра создаёт собственный экземпляр анализатора

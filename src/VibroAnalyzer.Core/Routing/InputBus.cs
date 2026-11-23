@@ -12,7 +12,7 @@ namespace VibroAnalyzer.Core.Routing;
 /// </summary>
 public sealed class InputBus : ISignalBus, IDisposable
 {
-    private const int HistorySeconds = 5;
+    private const int HistorySeconds = 20;
 
     private readonly object _sync = new();
     private readonly List<AnalyzerBase> _analyzers = new();

@@ -3,6 +3,7 @@ using VibroAnalyzer.Core.Analysis;
 using VibroAnalyzer.Core.Audio;
 using VibroAnalyzer.Core.Calibration;
 using VibroAnalyzer.Core.Devices;
+using VibroAnalyzer.Core.Recording;
 using VibroAnalyzer.Core.Routing;
 using VibroAnalyzer.Core.Session;
 using VibroAnalyzer.Core.Signals;
@@ -28,6 +29,7 @@ public sealed class AudioEngine : IDisposable
     private IAudioBackend _backend;
     private IReadOnlyList<AudioDeviceInfo> _devices = Array.Empty<AudioDeviceInfo>();
     private System.Threading.Timer? _fusionTimer;
+    private SessionRecorder? _recorder;
     private int _fusionInFlight;
     private volatile bool _running;
     private bool _disposed;
@@ -92,6 +94,12 @@ public sealed class AudioEngine : IDisposable
     public int BufferFrames { get; set; } = 1024;
 
     public bool IsRunning => _running;
+
+    /// <summary>Идёт ли сейчас запись.</summary>
+    public bool IsRecording => _recorder is { IsRecording: true };
+
+    /// <summary>Каталог текущей записи, если она идёт.</summary>
+    public string? RecordingDirectory => _recorder?.Directory;
 
     /// <summary>Шаблон калибровки для новых входов.</summary>
     public CalibrationProfile DefaultCalibration { get; } = new();
@@ -309,6 +317,11 @@ public sealed class AudioEngine : IDisposable
                 virtualInput.Configure(SampleRate);
             }
 
+            foreach (var output in _outputs)
+            {
+                output.Configure(SampleRate);
+            }
+
             var groups = BuildGroups();
             var started = new List<DeviceStreamGroup>();
 
@@ -328,6 +341,11 @@ public sealed class AudioEngine : IDisposable
                 foreach (var virtualInput in _virtualInputs)
                 {
                     virtualInput.Start();
+                }
+
+                foreach (var output in _outputs)
+                {
+                    output.Start();
                 }
 
                 if (_virtualInputs.Count > 0)
@@ -399,8 +417,117 @@ public sealed class AudioEngine : IDisposable
                 virtualInput.Stop();
             }
 
+            foreach (var output in _outputs)
+            {
+                output.Stop();
+            }
+
+            StopRecording();
             StatusChanged?.Invoke(this, "Измерение остановлено.");
         }
+    }
+
+    /// <summary>
+    /// Начинает запись выбранных шин. По умолчанию пишутся все входы и
+    /// виртуальные входы; при includeOutputs добавляются мониторы выходов.
+    /// </summary>
+    public void StartRecording(
+        string? name = null,
+        IEnumerable<ISignalBus>? buses = null,
+        bool includeOutputs = false)
+    {
+        string directory;
+
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (!_running)
+            {
+                throw new InvalidOperationException(
+                    "Запись доступна только во время измерения.");
+            }
+
+            if (_recorder is not null)
+            {
+                throw new InvalidOperationException("Запись уже идёт.");
+            }
+
+            var selected = buses?.ToList()
+                ?? _inputs.Cast<ISignalBus>().Concat(_virtualInputs).ToList();
+
+            if (selected.Count == 0)
+            {
+                throw new InvalidOperationException("Не выбрано ни одной шины для записи.");
+            }
+
+            var targets = selected.Select(RecordingTarget.ForBus).ToList();
+
+            if (includeOutputs)
+            {
+                targets.AddRange(_outputs.Select(RecordingTarget.ForOutput));
+            }
+
+            if (targets.Count == 0)
+            {
+                throw new InvalidOperationException("Нет данных для записи.");
+            }
+
+            directory = Path.Combine(
+                _session.ModuleDirectory,
+                "recordings",
+                $"{DateTime.Now:yyyyMMdd-HHmmss}-{SanitizeName(name ?? "session")}");
+
+            var recorder = new SessionRecorder(directory, SampleRate, targets);
+            recorder.Start();
+            _recorder = recorder;
+        }
+
+        StatusChanged?.Invoke(this, $"Запись начата: {directory}");
+    }
+
+    /// <summary>
+    /// Останавливает запись, сохраняет manifest.json и возвращает каталог записи.
+    /// </summary>
+    public string? StopRecording()
+    {
+        SessionRecorder? recorder;
+
+        lock (_sync)
+        {
+            recorder = _recorder;
+            _recorder = null;
+        }
+
+        if (recorder is null)
+        {
+            return null;
+        }
+
+        string path;
+
+        try
+        {
+            path = recorder.Stop();
+        }
+        finally
+        {
+            recorder.Dispose();
+        }
+
+        StatusChanged?.Invoke(this, $"Запись сохранена: {path}");
+        return path;
+    }
+
+    private static string SanitizeName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var characters = name
+            .Select(character => invalid.Contains(character) || char.IsWhiteSpace(character) ? '-' : character)
+            .ToArray();
+
+        var result = new string(characters).Trim('-', '.', ' ');
+        return string.IsNullOrWhiteSpace(result) ? "session" : result;
     }
 
     /// <summary>
@@ -411,7 +538,9 @@ public sealed class AudioEngine : IDisposable
         var inputs = Inputs;
         var virtualInputs = VirtualInputs;
         var outputs = Outputs;
-        var allBuses = inputs.Cast<ISignalBus>().Concat(virtualInputs).ToList();
+        var inputBuses = inputs.Cast<ISignalBus>().Concat(virtualInputs).ToList();
+        var outputBuses = outputs.Cast<ISignalBus>().ToList();
+        var allBuses = inputBuses.Concat(outputBuses).ToList();
 
         var report = new ReportData
         {
@@ -419,11 +548,11 @@ public sealed class AudioEngine : IDisposable
             CreatedAt = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss"),
             AppVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "2.0",
             Backend = _backend.Name,
-            InputDevice = string.Join("; ", allBuses.Select(bus => bus.Name)),
-            OutputDevice = string.Join("; ", outputs.Select(bus => bus.Name)),
+            InputDevice = string.Join("; ", inputBuses.Select(bus => bus.Name)),
+            OutputDevice = string.Join("; ", outputBuses.Select(bus => bus.Name)),
             SampleRate = SampleRate,
-            InputChannels = allBuses.Count,
-            OutputChannels = outputs.Count,
+            InputChannels = inputBuses.Count,
+            OutputChannels = outputBuses.Count,
         };
 
         foreach (var bus in allBuses)
@@ -506,6 +635,7 @@ public sealed class AudioEngine : IDisposable
 
         lock (_sync)
         {
+            StopRecording();
             ClearRoutes();
             _disposed = true;
         }
@@ -801,6 +931,11 @@ public sealed class AudioEngine : IDisposable
         foreach (var virtualInput in _virtualInputs)
         {
             virtualInput.Dispose();
+        }
+
+        foreach (var output in _outputs)
+        {
+            output.Dispose();
         }
 
         _inputs.Clear();

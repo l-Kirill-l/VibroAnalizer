@@ -18,6 +18,14 @@ public sealed class OscilloscopeAnalyzer : AnalyzerBase
     /// <summary>Отображаемое название анализатора.</summary>
     public override string Title => "Осциллограф";
 
+    /// <summary>Категория анализатора.</summary>
+    public override string Category => "Время";
+
+    /// <summary>Назначение анализатора.</summary>
+    public override string Description =>
+        "Показывает временную форму сигнала: размах, СКЗ, постоянную составляющую и оценку частоты. "
+        + "Базовый инструмент для проверки тракта, настройки уровня и поиска искажений.";
+
     /// <summary>Длительность отображаемого окна, с.</summary>
     public double TimeWindowSeconds { get; set; } = 0.02;
 

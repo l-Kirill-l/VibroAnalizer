@@ -5,12 +5,14 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using VibroAnalyzer.Audio;
 using VibroAnalyzer.Core.Analysis;
 using VibroAnalyzer.Core.Devices;
 using VibroAnalyzer.Core.Engine;
 using VibroAnalyzer.Core.Modulation;
+using VibroAnalyzer.Core.Playback;
 using VibroAnalyzer.Core.Routing;
 using VibroAnalyzer.Core.Session;
 
@@ -45,6 +47,7 @@ public partial class MainWindow : Window
     private OscilloscopeAnalyzer? _summaryScope;
     private SpectrumAnalyzer? _summarySpectrum;
     private ISignalBus? _summaryBus;
+    private ISignalBus? _recordingBus;
 
     private bool _ready;
     private bool _loading;
@@ -126,6 +129,16 @@ public partial class MainWindow : Window
                 case "наложение":
                     OpenOverlay();
                     break;
+
+                case "analyzers":
+                case "catalog":
+                case "каталог":
+                    if (firstInput is not null)
+                    {
+                        OpenAnalyzerCatalog(firstInput);
+                    }
+
+                    break;
             }
         }
     }
@@ -157,7 +170,10 @@ public partial class MainWindow : Window
         AddOutputButton.Click += OnAddOutput;
         AddMixerButton.Click += OnAddMixer;
         AddBandMergeButton.Click += OnAddBandMerge;
+        ConfiguredMixerButton.Click += OnAddConfiguredMixer;
         OverlayButton.Click += OnOpenOverlay;
+        RecordSessionButton.Click += OnToggleSessionRecording;
+        OpenRecordingButton.Click += OnOpenRecording;
 
         _engine.StatusChanged += OnEngineStatus;
         _engine.ErrorOccurred += OnEngineError;
@@ -201,6 +217,8 @@ public partial class MainWindow : Window
             {
                 _engine.Stop();
             }
+
+            _recordingBus = null;
 
             foreach (var virtualInput in _engine.VirtualInputs.ToList())
             {
@@ -418,6 +436,7 @@ public partial class MainWindow : Window
 
         UpdateDeviceInfo();
         UpdateButtons();
+        UpdateRecordingUi();
         UpdateReadout();
     }
 
@@ -436,12 +455,14 @@ public partial class MainWindow : Window
 
         var scope = SmallButton("Осциллограф", (_, _) => OpenScope(bus));
         var spectrum = SmallButton("Спектр", (_, _) => OpenSpectrum(bus));
+        var analyzers = SmallButton("Анализаторы", (_, _) => OpenAnalyzerCatalog(bus));
         var demodulation = SmallButton("Демодуляция", (_, _) => OpenDemodulation(bus));
+        var record = CreateRecordButton(bus);
         var remove = SmallButton("Удалить", (_, _) => RemoveRoute(bus));
         remove.Classes.Add("danger");
         remove.IsEnabled = !_engine.IsRunning;
 
-        return CreateRouteRow(bus.Name, subtitle, scope, spectrum, demodulation, remove);
+        return CreateRouteRow(bus.Name, subtitle, scope, spectrum, analyzers, demodulation, record, remove);
     }
 
     private Border BuildOutputRow(OutputBus bus)
@@ -459,23 +480,28 @@ public partial class MainWindow : Window
         enabled.IsCheckedChanged += (_, _) => bus.Enabled = enabled.IsChecked == true;
 
         var modulation = SmallButton("Модуляция", (_, _) => OpenModulation(bus));
+        var scope = SmallButton("Осциллограф", (_, _) => OpenScope(bus));
+        var spectrum = SmallButton("Спектр", (_, _) => OpenSpectrum(bus));
+        var analyzers = SmallButton("Анализаторы", (_, _) => OpenAnalyzerCatalog(bus));
         var remove = SmallButton("Удалить", (_, _) => RemoveRoute(bus));
         remove.Classes.Add("danger");
         remove.IsEnabled = !_engine.IsRunning;
 
-        return CreateRouteRow(bus.Name, subtitle, enabled, modulation, remove);
+        return CreateRouteRow(bus.Name, subtitle, enabled, modulation, scope, spectrum, analyzers, remove);
     }
 
     private Border BuildVirtualRow(VirtualInputBus bus)
     {
         var scope = SmallButton("Осциллограф", (_, _) => OpenScope(bus));
         var spectrum = SmallButton("Спектр", (_, _) => OpenSpectrum(bus));
+        var analyzers = SmallButton("Анализаторы", (_, _) => OpenAnalyzerCatalog(bus));
         var demodulation = SmallButton("Демодуляция", (_, _) => OpenDemodulation(bus));
+        var record = CreateRecordButton(bus);
         var remove = SmallButton("Удалить", (_, _) => RemoveRoute(bus));
         remove.Classes.Add("danger");
         remove.IsEnabled = !_engine.IsRunning;
 
-        return CreateRouteRow(bus.Name, bus.Description, scope, spectrum, demodulation, remove);
+        return CreateRouteRow(bus.Name, bus.Description, scope, spectrum, analyzers, demodulation, record, remove);
     }
 
     private static Border CreateRouteRow(string title, string subtitle, params Control[] actions)
@@ -522,6 +548,20 @@ public partial class MainWindow : Window
         return button;
     }
 
+    private Button CreateRecordButton(ISignalBus bus)
+    {
+        var active = _engine.IsRecording && ReferenceEquals(_recordingBus, bus);
+        var button = SmallButton(active ? "Стоп запись" : "Запись", (_, _) => ToggleBusRecording(bus));
+        button.IsEnabled = _engine.IsRunning && (!_engine.IsRecording || active);
+
+        if (active)
+        {
+            button.Classes.Add("danger");
+        }
+
+        return button;
+    }
+
     private static string DescribeDemodulation(DemodulationKind kind) => kind switch
     {
         DemodulationKind.Envelope => "огибающая",
@@ -540,6 +580,7 @@ public partial class MainWindow : Window
         {
             CloseAllBusWindows();
             _engine.SetBackend(AudioBackendFactory.Create(backendName));
+            _recordingBus = null;
             RefreshDeviceCombos();
             EnsureDefaultInput();
             RefreshRoutes();
@@ -692,6 +733,38 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnAddConfiguredMixer(object? sender, RoutedEventArgs e)
+    {
+        var buses = _engine.Inputs
+            .Cast<ISignalBus>()
+            .Concat(_engine.VirtualInputs)
+            .ToList();
+
+        if (buses.Count == 0)
+        {
+            ShowError("Сначала добавьте хотя бы один вход.");
+            return;
+        }
+
+        var dialog = new MixerWindow(buses);
+        var selection = await dialog.ShowDialog<MixerSelection?>(this);
+
+        if (selection is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _engine.AddVirtualInput(null, selection.Sources, selection.Mode);
+            ShowStatus("Виртуальный вход создан.");
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Не удалось создать микшер: {ex.Message}");
+        }
+    }
+
     private void RemoveRoute(object bus)
     {
         try
@@ -736,6 +809,12 @@ public partial class MainWindow : Window
 
         var window = new SpectrumWindow(analyzer, bus.Name);
         window.Closed += (_, _) => bus.RemoveAnalyzer(analyzer);
+        RegisterWindow(window, bus);
+    }
+
+    private void OpenAnalyzerCatalog(ISignalBus bus)
+    {
+        var window = new AnalyzerCatalogWindow(bus);
         RegisterWindow(window, bus);
     }
 
@@ -884,9 +963,11 @@ public partial class MainWindow : Window
     private void OnStop(object? sender, RoutedEventArgs e)
     {
         _engine.Stop();
+        _recordingBus = null;
         ShowStatus("Измерение остановлено.");
         RefreshRoutes();
         UpdateButtons();
+        UpdateRecordingUi();
         UpdateReadout();
     }
 
@@ -901,6 +982,125 @@ public partial class MainWindow : Window
         {
             ShowError($"Не удалось сохранить отчёт: {ex.Message}");
         }
+    }
+
+    private void OnToggleSessionRecording(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_engine.IsRecording)
+            {
+                var path = _engine.StopRecording();
+                _recordingBus = null;
+                ShowStatus(path is null ? "Запись остановлена." : $"Запись сохранена: {path}");
+            }
+            else
+            {
+                _engine.StartRecording(
+                    $"session-{DateTime.Now:HH-mm-ss}",
+                    includeOutputs: true);
+                _recordingBus = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Запись: {ex.Message}");
+        }
+
+        RefreshRoutes();
+        UpdateButtons();
+        UpdateRecordingUi();
+    }
+
+    private void ToggleBusRecording(ISignalBus bus)
+    {
+        try
+        {
+            if (_engine.IsRecording)
+            {
+                var path = _engine.StopRecording();
+                _recordingBus = null;
+                ShowStatus(path is null ? "Запись остановлена." : $"Запись сохранена: {path}");
+            }
+            else
+            {
+                _engine.StartRecording(
+                    $"bus-{bus.Name}",
+                    new[] { bus },
+                    includeOutputs: false);
+                _recordingBus = bus;
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Запись: {ex.Message}");
+        }
+
+        RefreshRoutes();
+        UpdateButtons();
+        UpdateRecordingUi();
+    }
+
+    private async void OnOpenRecording(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Выберите папку записи",
+                AllowMultiple = false,
+            });
+
+            if (folders.Count == 0)
+            {
+                return;
+            }
+
+            var path = folders[0].TryGetLocalPath();
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                ShowError("Не удалось получить путь к выбранной папке.");
+                return;
+            }
+
+            OpenReplay(path);
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Не удалось открыть запись: {ex.Message}");
+        }
+    }
+
+    /// <summary>Открывает сохранённую запись в окне просмотра.</summary>
+    public void OpenReplay(string directory)
+    {
+        try
+        {
+            var session = PlaybackSession.Load(directory);
+            new ReplayWindow(session).Show(this);
+            ShowStatus($"Открыта запись: {session.Name}");
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Не удалось открыть запись: {ex.Message}");
+        }
+    }
+
+    private void UpdateRecordingUi()
+    {
+        if (RecordSessionButton is null)
+        {
+            return;
+        }
+
+        var recording = _engine.IsRecording;
+        RecordSessionButton.Content = recording ? "Остановить запись" : "Записать сессию";
+        RecordSessionButton.Classes.Set("primary", !recording);
+        RecordSessionButton.Classes.Set("danger", recording);
+
+        RecordingStatusText.Text = recording
+            ? $"Идёт запись: {_engine.RecordingDirectory}"
+            : "Запись не ведётся.";
     }
 
     private void OnEngineStatus(object? sender, string message)
@@ -946,11 +1146,14 @@ public partial class MainWindow : Window
         StartButton.IsEnabled = idle;
         StopButton.IsEnabled = !idle;
         SaveButton.IsEnabled = true;
+        RecordSessionButton.IsEnabled = _engine.IsRunning || _engine.IsRecording;
+        OpenRecordingButton.IsEnabled = true;
 
         AddInputButton.IsEnabled = idle;
         AddOutputButton.IsEnabled = idle;
         AddMixerButton.IsEnabled = idle;
         AddBandMergeButton.IsEnabled = idle;
+        ConfiguredMixerButton.IsEnabled = idle;
         OverlayButton.IsEnabled = _engine.Inputs.Count + _engine.VirtualInputs.Count > 0;
 
         BackendCombo.IsEnabled = idle;

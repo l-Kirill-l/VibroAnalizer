@@ -12,13 +12,17 @@
     <Border Classes="chassis" Margin="12">
         <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
 
-            <StackPanel Grid.Row="0" Spacing="3">
-                <TextBlock Classes="tag" Text="ИЗМЕРИТЕЛЬНОЕ ОКНО · ОСЦИЛЛОГРАФ" />
-                <TextBlock Classes="hero" Text="Осциллограф" FontSize="22" />
-                <TextBlock Classes="subtitle"
-                           Text="Временная форма сигнала с выбранного канала и базовые измерения." />
-                <TextBlock x:Name="BoundText" Classes="hint" Text="Шина не задана" />
-            </StackPanel>
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="3">
+                    <TextBlock Classes="tag" Text="ИЗМЕРИТЕЛЬНОЕ ОКНО · ОСЦИЛЛОГРАФ" />
+                    <TextBlock Classes="hero" Text="Осциллограф" FontSize="22" />
+                    <TextBlock Classes="subtitle"
+                               Text="Временная форма сигнала с выбранного канала и базовые измерения." />
+                    <TextBlock x:Name="BoundText" Classes="hint" Text="Шина не задана" />
+                </StackPanel>
+                <Button Grid.Column="1" x:Name="HelpButton" Content="?"
+                        Classes="help" VerticalAlignment="Top" Margin="10,0,0,0" />
+            </Grid>
 
             <Border Grid.Row="1" Classes="card" Padding="12">
                 <StackPanel Spacing="10">
