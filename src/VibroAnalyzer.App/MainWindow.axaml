@@ -146,10 +146,10 @@
                     <StackPanel Spacing="12">
                         <Border Classes="card">
                             <StackPanel Spacing="8">
-                                <TextBlock Classes="module-label" Text="ВЫБРАННОЕ УСТРОЙСТВО" />
+                                <TextBlock Classes="module-label" Text="УСТРОЙСТВА И РАЗЪЁМЫ" />
                                 <TextBlock x:Name="InfoText" Classes="hint" />
 
-                                <TextBlock Classes="module-label" Text="РАЗЪЁМЫ И ВСТРОЕННАЯ АППАРАТУРА"
+                                <TextBlock Classes="module-label" Text="ВЫБОР УСТРОЙСТВА / РАЗЪЁМА"
                                            Margin="0,4,0,0" />
                                 <ComboBox x:Name="ChannelCombo"
                                           HorizontalAlignment="Stretch"
