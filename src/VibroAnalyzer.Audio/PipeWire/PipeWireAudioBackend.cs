@@ -304,13 +304,16 @@ public sealed class PipeWireAudioBackend : IAudioBackend, IAudioPortControl
                 string deviceId,
                 string streamId,
                 string portId,
+                string portName,
                 string displayName,
-                AudioJackType jackType)
+                AudioJackType jackType,
+                int routeChannels)
             {
                 var isDigital = jackType is AudioJackType.Digital or AudioJackType.Monitor;
-                var channelInfos = new List<AudioChannelInfo>(channels);
+                var deviceChannels = Math.Clamp(routeChannels, 1, 64);
+                var channelInfos = new List<AudioChannelInfo>(deviceChannels);
 
-                for (var index = 0; index < channels; index++)
+                for (var index = 0; index < deviceChannels; index++)
                 {
                     var channelName = DescribeChannelName(
                         index < channelNames.Length ? channelNames[index] : "",
@@ -328,8 +331,8 @@ public sealed class PipeWireAudioBackend : IAudioBackend, IAudioPortControl
                     BackendName,
                     IsInput: isInput,
                     IsOutput: !isInput,
-                    InputChannels: isInput ? channels : 0,
-                    OutputChannels: isInput ? 0 : channels,
+                    InputChannels: isInput ? deviceChannels : 0,
+                    OutputChannels: isInput ? 0 : deviceChannels,
                     DefaultSampleRate,
                     SampleRates,
                     channelInfos,
@@ -353,6 +356,7 @@ public sealed class PipeWireAudioBackend : IAudioBackend, IAudioPortControl
                     CardId = cardName,
                     StreamId = streamId,
                     PortId = portId,
+                    PortName = portName,
                     ControllerName = controllerName,
                     ActivePortId = activePortId,
                     Ports = ports,
@@ -365,10 +369,12 @@ public sealed class PipeWireAudioBackend : IAudioBackend, IAudioPortControl
                     id,
                     streamId: id,
                     portId: "",
+                    portName: "",
                     displayName: MakeUniqueName(
                         devices,
                         BuildDeviceName(isInput, isMonitor: true, description, nodeNick)),
-                    AudioJackType.Monitor);
+                    AudioJackType.Monitor,
+                    routeChannels: channels);
                 continue;
             }
 
@@ -387,10 +393,12 @@ public sealed class PipeWireAudioBackend : IAudioBackend, IAudioPortControl
                     id,
                     streamId: id,
                     portId: "",
+                    portName: "",
                     displayName: MakeUniqueName(
                         devices,
                         BuildDeviceName(isInput, isMonitor: false, description, nodeNick)),
-                    jackType);
+                    jackType,
+                    routeChannels: channels);
                 continue;
             }
 
@@ -402,6 +410,7 @@ public sealed class PipeWireAudioBackend : IAudioBackend, IAudioPortControl
                     $"{id}#{route.Id}",
                     streamId: id,
                     portId: route.Id,
+                    portName: route.Name,
                     displayName: MakeUniqueName(
                         devices,
                         BuildDeviceName(
@@ -410,7 +419,8 @@ public sealed class PipeWireAudioBackend : IAudioBackend, IAudioPortControl
                             description,
                             nodeNick,
                             route.Name)),
-                    route.JackType);
+                    route.JackType,
+                    routeChannels: route.Channels);
             }
         }
     }

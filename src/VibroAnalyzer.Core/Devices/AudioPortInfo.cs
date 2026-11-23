@@ -54,6 +54,12 @@ public sealed record AudioPortInfo(
     IReadOnlyList<AudioPinInfo> Pins,
     string Notes = "")
 {
+    /// <summary>Число входных каналов разъёма.</summary>
+    public int InputChannels { get; init; }
+
+    /// <summary>Число выходных каналов разъёма.</summary>
+    public int OutputChannels { get; init; }
+
     /// <summary>Цифровой интерфейс, для которого распиновка 3,5-мм разъёма неприменима.</summary>
     public bool IsDigital => JackType is AudioJackType.Digital or AudioJackType.Monitor;
 
@@ -137,7 +143,11 @@ public static class AudioPortTopology
             IsOutput: true,
             CombineAvailability(output.Availability, input.Availability),
             BuildCompositePins(output.Channels, input.Channels),
-            "наушники + микрофон");
+            "наушники + микрофон")
+        {
+            InputChannels = input.Channels,
+            OutputChannels = output.Channels,
+        };
     }
 
     private static AudioPortInfo BuildSingle(AudioPortRoute route)
@@ -162,7 +172,11 @@ public static class AudioPortTopology
             !route.IsInput,
             route.Availability,
             pins,
-            notes);
+            notes)
+        {
+            InputChannels = route.IsInput ? route.Channels : 0,
+            OutputChannels = route.IsInput ? 0 : route.Channels,
+        };
     }
 
     private static IReadOnlyList<AudioPinInfo> BuildSinglePins(PinMode mode, int channels)

@@ -75,6 +75,9 @@ public sealed record AudioDeviceInfo(
     /// <summary>Идентификатор выбранного физического разъёма (порта).</summary>
     public string PortId { get; init; } = "";
 
+    /// <summary>Имя физического разъёма, например «Встроенный микрофон».</summary>
+    public string PortName { get; init; } = "";
+
     /// <summary>Короткое имя карты/кодека для интерфейса.</summary>
     public string ControllerName { get; init; } = "";
 
@@ -90,6 +93,19 @@ public sealed record AudioDeviceInfo(
     /// </summary>
     public IReadOnlyList<AudioPortInfo> Ports { get; init; } = Array.Empty<AudioPortInfo>();
 
-    /// <summary>Для отображения в списках достаточно имени устройства.</summary>
-    public override string ToString() => Name;
+    /// <summary>
+    /// В основных списках показываем физический разъём и кодек, а не
+    /// программный идентификатор потока.
+    /// </summary>
+    public override string ToString()
+    {
+        if (string.IsNullOrWhiteSpace(PortName))
+        {
+            return Name;
+        }
+
+        return string.IsNullOrWhiteSpace(ControllerName)
+            ? PortName
+            : $"{PortName} · {ControllerName}";
+    }
 }
