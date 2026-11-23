@@ -63,6 +63,18 @@ public sealed record AudioDeviceInfo(
     /// <summary>Устройство одновременно поддерживает вход и выход.</summary>
     public bool IsDuplex => IsInput && IsOutput;
 
+    /// <summary>Идентификатор физической звуковой карты (например, alsa_card.*).</summary>
+    public string CardId { get; init; } = "";
+
+    /// <summary>Идентификатор активного физического разъёма, если он известен.</summary>
+    public string ActivePortId { get; init; } = "";
+
+    /// <summary>
+    /// Физические разъёмы карты: входы, выходы и совмещённые гнёзда.
+    /// Пустой список означает, что драйвер не сообщает топологию разъёмов.
+    /// </summary>
+    public IReadOnlyList<AudioPortInfo> Ports { get; init; } = Array.Empty<AudioPortInfo>();
+
     /// <summary>Для отображения в списках достаточно имени устройства.</summary>
     public override string ToString() => Name;
 }

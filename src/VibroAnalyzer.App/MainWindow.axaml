@@ -69,7 +69,7 @@
 
                                 <WrapPanel>
                                     <TextBlock Classes="label" Text="УСТРОЙСТВО" Margin="0,0,7,0" />
-                                    <ComboBox x:Name="InputDeviceCombo" Width="260" Margin="0,0,12,0" />
+                                    <ComboBox x:Name="InputDeviceCombo" Width="300" Margin="0,0,12,0" />
                                     <TextBlock Classes="label" Text="КАНАЛ" Margin="0,0,7,0" />
                                     <NumericUpDown x:Name="InputChannelBox" Width="80" Margin="0,0,12,0"
                                                    Minimum="0" Maximum="7" Increment="1"
@@ -90,7 +90,7 @@
 
                                 <WrapPanel>
                                     <TextBlock Classes="label" Text="УСТРОЙСТВО" Margin="0,0,7,0" />
-                                    <ComboBox x:Name="OutputDeviceCombo" Width="260" Margin="0,0,12,0" />
+                                    <ComboBox x:Name="OutputDeviceCombo" Width="300" Margin="0,0,12,0" />
                                     <TextBlock Classes="label" Text="КАНАЛ" Margin="0,0,7,0" />
                                     <NumericUpDown x:Name="OutputChannelBox" Width="80" Margin="0,0,12,0"
                                                    Minimum="0" Maximum="7" Increment="1"
@@ -145,6 +145,70 @@
                 <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Spacing="12">
                         <Border Classes="card">
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="module-label" Text="ВЫБРАННОЕ УСТРОЙСТВО" />
+                                <TextBlock x:Name="InfoText" Classes="hint" />
+
+                                <TextBlock Classes="module-label" Text="КАНАЛЫ И РАЗЪЁМЫ"
+                                           Margin="0,4,0,0" />
+                                <ListBox x:Name="ChannelList" Classes="channels"
+                                         MinHeight="36" MaxHeight="180"
+                                         SelectionMode="Single">
+                                    <ListBox.ItemContainerTheme>
+                                        <ControlTheme TargetType="ListBoxItem">
+                                            <Setter Property="Background" Value="#66141A21" />
+                                            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+                                            <Setter Property="BorderThickness" Value="1" />
+                                            <Setter Property="CornerRadius" Value="6" />
+                                            <Setter Property="Padding" Value="8,5" />
+                                            <Setter Property="Margin" Value="0,0,0,3" />
+                                            <Setter Property="Template">
+                                                <ControlTemplate>
+                                                    <Border Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            CornerRadius="{TemplateBinding CornerRadius}"
+                                                            Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter
+                                                            Content="{TemplateBinding Content}"
+                                                            ContentTemplate="{TemplateBinding ContentTemplate}" />
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter>
+                                            <Style Selector="^:pointerover">
+                                                <Setter Property="Background" Value="#33232D38" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource HairlineStrongBrush}" />
+                                            </Style>
+                                            <Style Selector="^:selected">
+                                                <Setter Property="Background" Value="#33233A44" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrightBrush}" />
+                                            </Style>
+                                        </ControlTheme>
+                                    </ListBox.ItemContainerTheme>
+                                </ListBox>
+                                <TextBlock x:Name="ChannelHint" Classes="hint" />
+
+                                <TextBlock Classes="module-label" Text="ПИНЫ ВЫБРАННОГО КАНАЛА"
+                                           Margin="0,4,0,0" />
+                                <Border x:Name="PinTableBorder" Classes="pin-table">
+                                    <StackPanel Spacing="6">
+                                        <Grid x:Name="PinTable"
+                                              ColumnDefinitions="46,72"
+                                              RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                                              ColumnSpacing="10" RowSpacing="3" />
+                                        <TextBlock x:Name="PinPurposeText" Classes="hint" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Classes="hint"
+                                           Text="R — вход, W — выход, RW — двунаправленный, — — контакт отсутствует." />
+                                <Button x:Name="ActivatePortButton"
+                                        Content="Активировать вход"
+                                        Classes="small"
+                                        HorizontalAlignment="Left" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
                             <StackPanel Spacing="10">
                                 <TextBlock Classes="module-label" Text="ТЕКУЩИЕ ПОКАЗАНИЯ" />
                                 <TextBlock x:Name="SummaryBusText" Classes="hint" Text="Нет входов." />
@@ -186,20 +250,6 @@
 
                                 <TextBlock x:Name="ReadoutDetail" Classes="hint"
                                            Text="Измерение не запущено." />
-                            </StackPanel>
-                        </Border>
-
-                        <Border Classes="card">
-                            <StackPanel Spacing="7">
-                                <TextBlock Classes="module-label" Text="ВЫБРАННОЕ УСТРОЙСТВО" />
-                                <TextBlock Classes="module-label" Text="ПИНЫ ВХОДА"
-                                           Margin="0,6,0,0" />
-                                <Grid x:Name="PinTable"
-                                      ColumnDefinitions="64,*"
-                                      RowDefinitions="Auto,Auto,Auto,Auto"
-                                      ColumnSpacing="8" RowSpacing="4" />
-                                <TextBlock Classes="hint" Text="R — вход, W — выход, RW — двунаправленный." />
-                                <TextBlock x:Name="InfoText" Classes="hint" />
                             </StackPanel>
                         </Border>
 

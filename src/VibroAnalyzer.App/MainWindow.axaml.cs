@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -56,6 +57,8 @@ public partial class MainWindow : Window
 
     private bool _ready;
     private bool _loading;
+    private bool _updatingChannelList;
+    private bool _infoShowsInput = true;
     private bool _closed;
 
     public MainWindow(AudioEngine engine, SessionContext session)
@@ -168,6 +171,10 @@ public partial class MainWindow : Window
         BufferCombo.SelectionChanged += OnBufferChanged;
         InputDeviceCombo.SelectionChanged += OnInputDeviceChanged;
         OutputDeviceCombo.SelectionChanged += OnOutputDeviceChanged;
+        InputDeviceCombo.DropDownOpened += (_, _) => SwitchInfoDevice(showInput: true);
+        OutputDeviceCombo.DropDownOpened += (_, _) => SwitchInfoDevice(showInput: false);
+        ChannelList.SelectionChanged += OnChannelSelectionChanged;
+        ActivatePortButton.Click += OnActivatePort;
         RefreshButton.Click += OnRefreshDevices;
         SettingsButton.Click += OnOpenSettings;
         StartButton.Click += OnStart;
@@ -317,6 +324,9 @@ public partial class MainWindow : Window
 
     private void RefreshDeviceCombos()
     {
+        var previousInputId = (InputDeviceCombo.SelectedItem as AudioDeviceInfo)?.Id;
+        var previousOutputId = (OutputDeviceCombo.SelectedItem as AudioDeviceInfo)?.Id;
+
         _loading = true;
         try
         {
@@ -326,12 +336,23 @@ public partial class MainWindow : Window
             InputDeviceCombo.ItemsSource = inputs;
             OutputDeviceCombo.ItemsSource = outputs;
 
-            InputDeviceCombo.SelectedItem = inputs.FirstOrDefault(device => !device.IsMonitor)
+            InputDeviceCombo.SelectedItem = inputs.FirstOrDefault(device => device.Id == previousInputId)
+                                             ?? inputs.FirstOrDefault(device => !device.IsMonitor)
                                              ?? inputs.FirstOrDefault();
-            OutputDeviceCombo.SelectedItem = outputs.FirstOrDefault(device => !device.IsMonitor)
+            OutputDeviceCombo.SelectedItem = outputs.FirstOrDefault(device => device.Id == previousOutputId)
+                                              ?? outputs.FirstOrDefault(device => !device.IsMonitor)
                                               ?? outputs.FirstOrDefault();
 
             UpdateChannelLimits();
+
+            if (inputs.Count == 0)
+            {
+                _infoShowsInput = false;
+            }
+            else if (outputs.Count == 0)
+            {
+                _infoShowsInput = true;
+            }
         }
         finally
         {
@@ -705,6 +726,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        _infoShowsInput = true;
         UpdateChannelLimits();
         UpdateDeviceInfo();
     }
@@ -716,7 +738,19 @@ public partial class MainWindow : Window
             return;
         }
 
+        _infoShowsInput = false;
         UpdateChannelLimits();
+        UpdateDeviceInfo();
+    }
+
+    private void SwitchInfoDevice(bool showInput)
+    {
+        if (_infoShowsInput == showInput)
+        {
+            return;
+        }
+
+        _infoShowsInput = showInput;
         UpdateDeviceInfo();
     }
 
@@ -752,7 +786,14 @@ public partial class MainWindow : Window
 
         try
         {
+            var portChanged = TryActivateSelectedPortForRouting(isInput: true);
             _engine.AddInput(device, ReadChannel(InputChannelBox));
+
+            if (portChanged)
+            {
+                _engine.RefreshDevices();
+                RefreshDeviceCombos();
+            }
         }
         catch (Exception ex)
         {
@@ -770,7 +811,14 @@ public partial class MainWindow : Window
 
         try
         {
+            var portChanged = TryActivateSelectedPortForRouting(isInput: false);
             _engine.AddOutput(device, ReadChannel(OutputChannelBox));
+
+            if (portChanged)
+            {
+                _engine.RefreshDevices();
+                RefreshDeviceCombos();
+            }
         }
         catch (Exception ex)
         {
@@ -1261,148 +1309,581 @@ public partial class MainWindow : Window
         OutputDeviceCombo.IsEnabled = idle;
         InputChannelBox.IsEnabled = idle;
         OutputChannelBox.IsEnabled = idle;
+        UpdateActivatePortButton();
     }
+
+    private sealed record ChannelEntry(AudioPortInfo Port, bool IsActive);
 
     private void UpdateDeviceInfo()
     {
         var input = InputDeviceCombo.SelectedItem as AudioDeviceInfo;
         var output = OutputDeviceCombo.SelectedItem as AudioDeviceInfo;
+        var device = ResolveInfoDevice(input, output, _infoShowsInput);
 
-        if (input is null && output is null)
+        if (device is null)
         {
             InfoText.Text = "Устройства не найдены. Проверьте подключение и выберите бэкенд.";
+            RefreshChannelList();
             return;
         }
 
-        var lines = new List<string>();
-
-        if (input is not null)
+        var lines = new List<string>
         {
-            lines.Add($"Вход: {input.Name}");
-            lines.Add($"  каналов: {input.InputChannels}, частота по умолчанию: {input.DefaultSampleRate} Гц");
-            lines.Add($"  возможности: {DescribeCapabilities(input.Capabilities)}");
-            lines.Add($"  вход: {DescribeInputSpecs(input.Capabilities)}");
+            device.Name,
+            BuildDeviceSpecLine(device, device.IsInput),
+        };
 
-            var inputChannels = input.Channels
-                .Where(channel => channel.IsInput)
-                .OrderBy(channel => channel.Index)
-                .Take(16)
-                .ToList();
-
-            if (inputChannels.Count > 0)
-            {
-                lines.Add("  физические каналы:");
-                foreach (var channel in inputChannels)
-                {
-                    lines.Add($"    {channel.Index}: {channel.Name} ({channel.JackType})");
-                }
-            }
-
-            if (input.IsMonitor)
-            {
-                lines.Add("  ! это монитор выхода: сигнал взят из петли, а не с внешнего входа.");
-            }
+        if (device.IsInput)
+        {
+            lines.Add(DescribeInputSpecs(device.Capabilities));
         }
 
-        if (output is not null)
+        if (device.IsMonitor)
         {
-            if (lines.Count > 0)
-            {
-                lines.Add("");
-            }
-
-            lines.Add($"Выход: {output.Name}");
-            lines.Add($"  каналов: {output.OutputChannels}, частота по умолчанию: {output.DefaultSampleRate} Гц");
-            lines.Add($"  возможности: {DescribeCapabilities(output.Capabilities)}");
-
-            var outputChannels = output.Channels
-                .Where(channel => !channel.IsInput)
-                .OrderBy(channel => channel.Index)
-                .Take(16)
-                .ToList();
-
-            if (outputChannels.Count > 0)
-            {
-                lines.Add("  физические каналы:");
-                foreach (var channel in outputChannels)
-                {
-                    lines.Add($"    {channel.Index}: {channel.Name} ({channel.JackType})");
-                }
-            }
+            lines.Add("! это монитор выхода: сигнал взят из петли, а не с внешнего входа.");
         }
 
         InfoText.Text = string.Join(Environment.NewLine, lines);
-        RefreshPinTable();
+        RefreshChannelList();
     }
 
-    private void RefreshPinTable()
+    private static AudioDeviceInfo? ResolveInfoDevice(
+        AudioDeviceInfo? input,
+        AudioDeviceInfo? output,
+        bool preferInput = true)
     {
-        PinTable.Children.Clear();
-        var device = InputDeviceCombo.SelectedItem as AudioDeviceInfo;
-
-        for (var index = 0; index < 4; index++)
-        {
-            var hasInput = device is { IsInput: true } && index < device.InputChannels;
-            var hasOutput = device is { IsOutput: true } && index < device.OutputChannels;
-            var mode = hasInput && hasOutput ? "RW" : hasInput ? "R" : hasOutput ? "W" : "—";
-            var color = mode switch
-            {
-                "R" => Color.Parse("#49E8B2"),
-                "W" => Color.Parse("#E06A33"),
-                "RW" => Color.Parse("#3F8CE8"),
-                _ => Color.Parse("#798793"),
-            };
-
-            var pinBlock = new TextBlock
-            {
-                Text = (index + 1).ToString(),
-                FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Liberation Mono, DejaVu Sans Mono"),
-                FontSize = 11,
-                Foreground = new SolidColorBrush(Color.Parse("#B7C3CF")),
-            };
-            var pinBorder = new Border { Child = pinBlock };
-            pinBorder.Classes.Add("pin");
-
-            var modeBlock = new TextBlock
-            {
-                Text = mode,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Liberation Mono, DejaVu Sans Mono"),
-                FontSize = 11,
-                FontWeight = FontWeight.Bold,
-                Foreground = new SolidColorBrush(color),
-            };
-            var modeBorder = new Border { Child = modeBlock };
-            modeBorder.Classes.Add("pin");
-
-            Grid.SetRow(pinBorder, index);
-            Grid.SetRow(modeBorder, index);
-            Grid.SetColumn(pinBorder, 0);
-            Grid.SetColumn(modeBorder, 1);
-            PinTable.Children.Add(pinBorder);
-            PinTable.Children.Add(modeBorder);
-        }
+        return preferInput ? input ?? output : output ?? input;
     }
 
-    private static string DescribeCapabilities(DeviceCapabilities capabilities)
+    private static string BuildDeviceSpecLine(AudioDeviceInfo device, bool isInput)
     {
         var parts = new List<string>
         {
-            capabilities.SupportsDuplex ? "дуплекс" : "не дуплекс",
-            capabilities.IsAcCoupled ? "AC-связь" : "DC-связь",
-            capabilities.SupportsExclusiveMode ? "эксклюзивный режим" : "общий режим",
+            isInput ? $"{device.InputChannels} вх." : $"{device.OutputChannels} вых.",
+            $"{device.DefaultSampleRate} Гц",
         };
 
-        if (capabilities.MaxInputVoltageRms is { } volts)
+        if (device.Capabilities.BitDepth is { } bits)
         {
-            parts.Add($"до {volts:0.###} В СКЗ");
+            parts.Add($"{bits} бит");
         }
 
-        if (!string.IsNullOrWhiteSpace(capabilities.Notes))
+        if (device.Capabilities.SupportsDuplex)
         {
-            parts.Add(capabilities.Notes);
+            parts.Add("дуплекс");
         }
 
-        return string.Join(", ", parts);
+        return string.Join(" · ", parts);
+    }
+
+    private void RefreshChannelList()
+    {
+        var input = InputDeviceCombo.SelectedItem as AudioDeviceInfo;
+        var output = OutputDeviceCombo.SelectedItem as AudioDeviceInfo;
+        var device = ResolveInfoDevice(input, output, _infoShowsInput);
+        var previousEntry = ChannelList.SelectedItem as ChannelEntry;
+        var previousId = previousEntry is not null && IsDirectionRelevant(previousEntry.Port)
+            ? previousEntry.Port.Id
+            : null;
+
+        var ports = BuildChannelPorts(device);
+        var activeIds = new HashSet<string>(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(input?.ActivePortId))
+        {
+            activeIds.Add(input.ActivePortId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(output?.ActivePortId))
+        {
+            activeIds.Add(output.ActivePortId);
+        }
+
+        var entries = ports
+            .Select(port => new ChannelEntry(port, IsActivePort(port, activeIds)))
+            .ToList();
+
+        _updatingChannelList = true;
+        try
+        {
+            ChannelList.ItemTemplate = new FuncDataTemplate<ChannelEntry>(
+                (entry, _) => BuildChannelRow(entry));
+            ChannelList.ItemsSource = entries;
+
+            var selected = entries.FirstOrDefault(entry => entry.Port.Id == previousId)
+                           ?? entries.FirstOrDefault(entry =>
+                               entry.IsActive && IsDirectionRelevant(entry.Port))
+                           ?? entries.FirstOrDefault(entry => IsDirectionRelevant(entry.Port))
+                           ?? entries.FirstOrDefault();
+            ChannelList.SelectedItem = selected;
+        }
+        finally
+        {
+            _updatingChannelList = false;
+        }
+
+        ChannelHint.Text = entries.Count == 0
+            ? "Драйвер не сообщает физические разъёмы; показаны только каналы устройства."
+            : _engine.Backend is IAudioPortControl
+                ? "Выбранный разъём активируется кнопкой ниже или при добавлении входа/выхода."
+                : "Показаны направления каналов; переключение разъёма этим драйвером не поддерживается.";
+
+        RefreshPinTable(ChannelList.SelectedItem as ChannelEntry);
+        UpdateActivatePortButton();
+    }
+
+    private bool IsDirectionRelevant(AudioPortInfo port)
+        => _infoShowsInput ? port.IsInput : port.IsOutput;
+
+    private static IReadOnlyList<AudioPortInfo> BuildChannelPorts(AudioDeviceInfo? device)
+    {
+        if (device is null)
+        {
+            return Array.Empty<AudioPortInfo>();
+        }
+
+        if (device.Ports.Count > 0)
+        {
+            return device.Ports;
+        }
+
+        var result = new List<AudioPortInfo>();
+
+        foreach (var channel in device.Channels.OrderBy(channel => channel.Index))
+        {
+            var digital = channel.JackType is AudioJackType.Digital or AudioJackType.Monitor;
+            var mode = channel.IsInput ? PinMode.Read : PinMode.Write;
+            var pins = digital
+                ? Array.Empty<AudioPinInfo>()
+                : new[]
+                {
+                    new AudioPinInfo(1, mode, channel.IsInput ? "вход" : "выход"),
+                    new AudioPinInfo(2, device.Channels.Count >= 2 ? mode : PinMode.Absent,
+                        device.Channels.Count >= 2 ? "второй канал" : "земля"),
+                    new AudioPinInfo(3, PinMode.Absent, "земля"),
+                    new AudioPinInfo(4, PinMode.Absent, "нет контакта"),
+                };
+
+            result.Add(new AudioPortInfo(
+                $"{device.Id}:{channel.Index}",
+                $"{channel.Name} · канал {channel.Index + 1}",
+                channel.JackType,
+                channel.IsInput,
+                !channel.IsInput,
+                PortAvailability.Unknown,
+                pins,
+                "Распиновка не сообщается драйвером; показано только направление канала."));
+        }
+
+        return result;
+    }
+
+    private static bool IsActivePort(AudioPortInfo port, HashSet<string> activeIds)
+    {
+        if (activeIds.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var id in port.Id.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (activeIds.Contains(id))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Control BuildChannelRow(ChannelEntry? entry)
+    {
+        if (entry is null)
+        {
+            return new Border();
+        }
+
+        var port = entry.Port;
+        var accent = port.IsInput && port.IsOutput
+            ? Color.Parse("#3F8CE8")
+            : port.IsInput
+                ? Color.Parse("#49E8B2")
+                : Color.Parse("#E06A33");
+
+        var badge = new Border
+        {
+            Background = new SolidColorBrush(accent, 0.16),
+            BorderBrush = new SolidColorBrush(accent, 0.55),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(7, 3),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = port.DirectionSummary,
+                FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Liberation Mono, DejaVu Sans Mono"),
+                FontSize = 10.5,
+                FontWeight = FontWeight.Bold,
+                Foreground = new SolidColorBrush(accent),
+            },
+        };
+
+        var title = new TextBlock
+        {
+            Text = port.Name,
+            FontSize = 12.5,
+            FontWeight = FontWeight.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.Parse("#F2F6FA")),
+        };
+
+        var details = new List<string>();
+        if (entry.IsActive)
+        {
+            details.Add("активен");
+        }
+
+        if (port.Availability == PortAvailability.Unavailable)
+        {
+            details.Add("не подключён");
+        }
+
+        if (port.IsDigital)
+        {
+            details.Add("цифровой");
+        }
+
+        var subtitle = new TextBlock
+        {
+            Text = string.Join(" · ", details),
+            FontSize = 10.5,
+            Foreground = new SolidColorBrush(Color.Parse("#798793")),
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        var stack = new StackPanel { Spacing = 1 };
+        stack.Children.Add(title);
+        stack.Children.Add(subtitle);
+
+        var state = new TextBlock
+        {
+            Text = entry.IsActive ? "АКТИВЕН" : "",
+            FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Liberation Mono, DejaVu Sans Mono"),
+            FontSize = 9.5,
+            FontWeight = FontWeight.Bold,
+            Foreground = new SolidColorBrush(entry.IsActive
+                ? Color.Parse("#49E8B2")
+                : Color.Parse("#798793")),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("54,*,Auto"),
+            ColumnSpacing = 8,
+        };
+        Grid.SetColumn(badge, 0);
+        Grid.SetColumn(stack, 1);
+        Grid.SetColumn(state, 2);
+        grid.Children.Add(badge);
+        grid.Children.Add(stack);
+        grid.Children.Add(state);
+        return grid;
+    }
+
+    private void OnChannelSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingChannelList)
+        {
+            return;
+        }
+
+        RefreshPinTable(ChannelList.SelectedItem as ChannelEntry);
+    }
+
+    private void RefreshPinTable(ChannelEntry? entry)
+    {
+        PinTable.Children.Clear();
+        PinPurposeText.Text = "";
+
+        if (entry is null)
+        {
+            PinTableBorder.IsVisible = false;
+            return;
+        }
+
+        PinTableBorder.IsVisible = true;
+        var port = entry.Port;
+
+        AddPinCell(0, 0, "ПИН", header: true);
+        AddPinCell(0, 1, "РЕЖИМ", header: true);
+
+        if (port.Pins.Count == 0)
+        {
+            var note = new TextBlock
+            {
+                Text = port.IsDigital
+                    ? "Цифровой интерфейс: распиновка 3,5-мм разъёма неприменима."
+                    : "Драйвер не сообщает распиновку этого разъёма.",
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.Parse("#798793")),
+            };
+            Grid.SetRow(note, 1);
+            Grid.SetColumnSpan(note, 2);
+            PinTable.Children.Add(note);
+        }
+        else
+        {
+            var row = 1;
+            foreach (var pin in port.Pins.Take(4))
+            {
+                var (text, color) = pin.Mode switch
+                {
+                    PinMode.Read => ("R", Color.Parse("#49E8B2")),
+                    PinMode.Write => ("W", Color.Parse("#E06A33")),
+                    PinMode.ReadWrite => ("RW", Color.Parse("#3F8CE8")),
+                    _ => ("—", Color.Parse("#798793")),
+                };
+
+                AddPinCell(row, 0, pin.Number.ToString(), header: false);
+                AddPinCell(row, 1, text, header: false, color);
+                row++;
+            }
+
+            PinPurposeText.Text = string.Join(
+                " · ",
+                port.Pins.Select(pin => $"{pin.Number} — {pin.Purpose}"));
+        }
+
+        UpdateActivatePortButton();
+    }
+
+    private void AddPinCell(
+        int row,
+        int column,
+        string text,
+        bool header,
+        Color? color = null)
+    {
+        var block = new TextBlock
+        {
+            Text = text,
+            FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, Liberation Mono, DejaVu Sans Mono"),
+            FontSize = header ? 9.5 : 11.5,
+            FontWeight = header ? FontWeight.Bold : FontWeight.SemiBold,
+            Foreground = new SolidColorBrush(header
+                ? Color.Parse("#798793")
+                : color ?? Color.Parse("#F2F6FA")),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var border = new Border { Child = block };
+        border.Classes.Add("pin");
+
+        if (header)
+        {
+            border.Background = null;
+            border.BorderThickness = new Thickness(0);
+            border.Padding = new Thickness(0);
+        }
+        else if (color is not null)
+        {
+            border.Background = new SolidColorBrush(color.Value, 0.12);
+            border.BorderBrush = new SolidColorBrush(color.Value, 0.45);
+        }
+
+        Grid.SetRow(border, row);
+        Grid.SetColumn(border, column);
+        PinTable.Children.Add(border);
+    }
+
+    private void UpdateActivatePortButton()
+    {
+        var supported = _engine.Backend is IAudioPortControl;
+        var entry = ChannelList.SelectedItem as ChannelEntry;
+        var relevant = entry is not null
+                       && (_infoShowsInput ? entry.Port.IsInput : entry.Port.IsOutput);
+
+        ActivatePortButton.Content = _infoShowsInput
+            ? "Активировать вход"
+            : "Активировать выход";
+        ActivatePortButton.IsVisible = supported;
+        ActivatePortButton.IsEnabled = supported && !_engine.IsRunning && relevant;
+    }
+
+    private void OnActivatePort(object? sender, RoutedEventArgs e)
+    {
+        if (ChannelList.SelectedItem is not ChannelEntry entry)
+        {
+            return;
+        }
+
+        if (_engine.IsRunning)
+        {
+            ShowStatus("Остановите измерение перед сменой разъёма.");
+            return;
+        }
+
+        if (_engine.Backend is not IAudioPortControl control)
+        {
+            ShowError("Бэкенд не поддерживает выбор разъёма.");
+            return;
+        }
+
+        var targets = ResolvePortActivationTargets(entry.Port, _infoShowsInput);
+        if (targets.Count == 0)
+        {
+            ShowError("Не найдено устройство для выбранного разъёма.");
+            return;
+        }
+
+        var errors = new List<string>();
+        var activated = 0;
+
+        foreach (var target in targets)
+        {
+            if (control.TrySelectPort(target.DeviceId, target.PortId, target.IsInput, out var error))
+            {
+                activated++;
+            }
+            else
+            {
+                errors.Add(error);
+            }
+        }
+
+        if (activated == 0)
+        {
+            ShowError($"Не удалось активировать разъём: {string.Join("; ", errors)}");
+            return;
+        }
+
+        ShowStatus(errors.Count > 0
+            ? $"Разъём «{entry.Port.Name}» активирован частично: {string.Join("; ", errors)}"
+            : $"Разъём «{entry.Port.Name}» активирован.");
+
+        _engine.RefreshDevices();
+        RefreshDeviceCombos();
+    }
+
+    private List<(string DeviceId, string PortId, bool IsInput)> ResolvePortActivationTargets(
+        AudioPortInfo port,
+        bool isInput)
+    {
+        var result = new List<(string DeviceId, string PortId, bool IsInput)>();
+        var ids = port.Id.Split('|', StringSplitOptions.RemoveEmptyEntries);
+
+        if (ids.Length == 0)
+        {
+            return result;
+        }
+
+        if (ids.Length == 2)
+        {
+            if (isInput)
+            {
+                var inputDevice = FindInputDeviceForCard();
+                if (inputDevice is not null)
+                {
+                    result.Add((inputDevice.Id, ids[1], true));
+                }
+            }
+            else
+            {
+                var outputDevice = FindOutputDeviceForCard();
+                if (outputDevice is not null)
+                {
+                    result.Add((outputDevice.Id, ids[0], false));
+                }
+            }
+
+            return result;
+        }
+
+        if (isInput && port.IsInput)
+        {
+            var inputDevice = FindInputDeviceForCard();
+            if (inputDevice is not null)
+            {
+                result.Add((inputDevice.Id, ids[0], true));
+            }
+        }
+        else if (!isInput && port.IsOutput)
+        {
+            var outputDevice = FindOutputDeviceForCard();
+            if (outputDevice is not null)
+            {
+                result.Add((outputDevice.Id, ids[0], false));
+            }
+        }
+
+        return result;
+    }
+
+    private AudioDeviceInfo? FindInputDeviceForCard()
+    {
+        var current = InputDeviceCombo.SelectedItem as AudioDeviceInfo;
+        if (current is null)
+        {
+            return null;
+        }
+
+        if (!current.IsMonitor)
+        {
+            return current;
+        }
+
+        return _engine.Devices.FirstOrDefault(device =>
+                   device.IsInput && !device.IsMonitor && device.CardId == current.CardId)
+               ?? current;
+    }
+
+    private AudioDeviceInfo? FindOutputDeviceForCard()
+    {
+        var current = OutputDeviceCombo.SelectedItem as AudioDeviceInfo;
+        var inputCardId = (InputDeviceCombo.SelectedItem as AudioDeviceInfo)?.CardId;
+
+        if (current is not null
+            && (string.IsNullOrWhiteSpace(inputCardId) || current.CardId == inputCardId))
+        {
+            return current;
+        }
+
+        if (!string.IsNullOrWhiteSpace(inputCardId))
+        {
+            return _engine.Devices.FirstOrDefault(device =>
+                device.IsOutput && device.CardId == inputCardId);
+        }
+
+        return current;
+    }
+
+    private bool TryActivateSelectedPortForRouting(bool isInput)
+    {
+        if (_engine.IsRunning
+            || _engine.Backend is not IAudioPortControl control
+            || ChannelList.SelectedItem is not ChannelEntry entry)
+        {
+            return false;
+        }
+
+        var targets = ResolvePortActivationTargets(entry.Port, isInput);
+        var activated = false;
+
+        foreach (var target in targets)
+        {
+            if (control.TrySelectPort(target.DeviceId, target.PortId, target.IsInput, out var error))
+            {
+                activated = true;
+            }
+            else
+            {
+                ShowStatus($"Разъём «{entry.Port.Name}» не переключён: {error}. "
+                           + "Будет использован активный разъём.");
+            }
+        }
+
+        return activated;
     }
 
     private static string DescribeInputSpecs(DeviceCapabilities capabilities)
@@ -1411,7 +1892,7 @@ public partial class MainWindow : Window
 
         if (capabilities.MaxInputVoltageRms is { } volts)
         {
-            parts.Add($"напряжение до {volts:0.###} В СКЗ");
+            parts.Add($"напряжение (типично) до {volts:0.###} В СКЗ");
         }
 
         if (capabilities.MaxInputCurrentMa is { } current)
@@ -1421,7 +1902,7 @@ public partial class MainWindow : Window
 
         if (capabilities.InputImpedanceOhms is { } impedance)
         {
-            parts.Add($"импеданс {impedance / 1000.0:0.###} кОм");
+            parts.Add($"импеданс (типично) {impedance / 1000.0:0.###} кОм");
         }
 
         if (capabilities.MinFrequencyHz is { } minFrequency
@@ -1430,12 +1911,9 @@ public partial class MainWindow : Window
             parts.Add($"полоса {minFrequency:0.###}–{maxFrequency:0.###} Гц");
         }
 
-        if (capabilities.BitDepth is { } bits)
-        {
-            parts.Add($"{bits} бит");
-        }
-
-        return parts.Count > 0 ? string.Join(", ", parts) : "параметры не сообщаются устройством";
+        return parts.Count > 0
+            ? string.Join(", ", parts)
+            : "паспортные параметры входа не сообщаются драйвером.";
     }
 
     private void UpdateSessionInfo()

@@ -96,9 +96,38 @@ public sealed record AudioDeviceInfo(
     bool IsMonitor = false)
 {
     public bool IsDuplex { get; }
+    public string CardId { get; init; }
+    public string ActivePortId { get; init; }
+    public IReadOnlyList<AudioPortInfo> Ports { get; init; }
     public override string ToString();
 }
+
+public enum PinMode { Absent, Read, Write, ReadWrite }
+
+public enum PortAvailability { Unknown, Available, Unavailable }
+
+public sealed record AudioPinInfo(int Number, PinMode Mode, string Purpose = "");
+
+public sealed record AudioPortInfo(
+    string Id,
+    string Name,
+    AudioJackType JackType,
+    bool IsInput,
+    bool IsOutput,
+    PortAvailability Availability,
+    IReadOnlyList<AudioPinInfo> Pins,
+    string Notes = "")
+{
+    public bool IsDigital { get; }
+    public string DirectionSummary { get; }
+}
 ```
+
+`AudioPortRoute` и `AudioPortTopology.Build` собирают разъёмы из маршрутов
+драйвера. Совмещённые гнёзда (наушники + микрофон гарнитуры) объединяются по
+группе доступности; для 4-контактного гнезда выводятся контакты
+`W / W / — / R`, для обычного выхода или входа — `W / W / — / —` или
+`R / R / — / —`.
 
 ## Audio abstractions
 
@@ -135,6 +164,12 @@ public interface IAudioBackend
     bool IsAvailable { get; }
     IReadOnlyList<AudioDeviceInfo> EnumerateDevices();
     IAudioStream OpenStream(AudioStreamOptions options);
+}
+
+/// <summary>Переключение физического разъёма (PipeWire: pactl set-source-port/set-sink-port).</summary>
+public interface IAudioPortControl
+{
+    bool TrySelectPort(string deviceId, string portId, bool isInput, out string error);
 }
 
 public sealed class AudioBackendException : Exception

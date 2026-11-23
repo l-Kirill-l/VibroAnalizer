@@ -70,6 +70,18 @@ public interface IAudioBackend
 }
 
 /// <summary>
+/// Бэкенд, который умеет переключать физический разъём устройства
+/// (например, встроенный микрофон ↔ микрофон гарнитуры в PipeWire).
+/// </summary>
+public interface IAudioPortControl
+{
+    /// <summary>
+    /// Активирует разъём <paramref name="portId"/> у указанного источника или стока.
+    /// </summary>
+    bool TrySelectPort(string deviceId, string portId, bool isInput, out string error);
+}
+
+/// <summary>
 /// Исключение аудиобэкенда с понятным пользователю сообщением.
 /// </summary>
 public sealed class AudioBackendException : Exception

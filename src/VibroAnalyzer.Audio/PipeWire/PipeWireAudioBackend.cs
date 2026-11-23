@@ -14,7 +14,7 @@ namespace VibroAnalyzer.Audio.PipeWire;
 /// Устройства перечисляются по JSON-выводу pactl, вход и выход открываются
 /// раздельными процессами, поэтому возможен дрейф частоты дискретизации.
 /// </summary>
-public sealed class PipeWireAudioBackend : IAudioBackend
+public sealed class PipeWireAudioBackend : IAudioBackend, IAudioPortControl
 {
     /// <summary>Имя бэкенда для интерфейса.</summary>
     public const string BackendName = "PipeWire";
@@ -40,9 +40,10 @@ public sealed class PipeWireAudioBackend : IAudioBackend
 
         var devices = new List<AudioDeviceInfo>();
         var errors = new List<string>();
+        var cards = PipeWireCardReader.Read();
 
-        AppendDevices(devices, "sources", isInput: true, errors);
-        AppendDevices(devices, "sinks", isInput: false, errors);
+        AppendDevices(devices, "sources", isInput: true, errors, cards);
+        AppendDevices(devices, "sinks", isInput: false, errors, cards);
 
         if (devices.Count == 0 && errors.Count > 0)
         {
@@ -62,7 +63,8 @@ public sealed class PipeWireAudioBackend : IAudioBackend
         List<AudioDeviceInfo> devices,
         string listKind,
         bool isInput,
-        List<string> errors)
+        List<string> errors,
+        IReadOnlyDictionary<string, PipeWireCard> cards)
     {
         var json = RunPactl(new[] { "-f", "json", "list", listKind }, out var error);
         if (json is null)
@@ -77,7 +79,7 @@ public sealed class PipeWireAudioBackend : IAudioBackend
 
         try
         {
-            ParseDevices(json, isInput, devices);
+            ParseDevices(json, isInput, devices, cards);
         }
         catch (JsonException ex)
         {
@@ -90,12 +92,18 @@ public sealed class PipeWireAudioBackend : IAudioBackend
     }
 
     private static string? RunPactl(string[] arguments, out string error)
+        => RunTool("pactl", arguments, out error);
+
+    internal static string? RunTool(
+        string fileName,
+        IReadOnlyList<string> arguments,
+        out string error)
     {
         error = "";
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = "pactl",
+            FileName = fileName,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -112,7 +120,7 @@ public sealed class PipeWireAudioBackend : IAudioBackend
             using var process = new Process { StartInfo = startInfo };
             if (!process.Start())
             {
-                error = "pactl не запустился.";
+                error = $"{fileName} не запустился.";
                 return null;
             }
 
@@ -131,7 +139,7 @@ public sealed class PipeWireAudioBackend : IAudioBackend
                     // Процесс мог завершиться самостоятельно.
                 }
 
-                error = "pactl не ответил за 5 секунд.";
+                error = $"{fileName} не ответил за 5 секунд.";
                 return null;
             }
 
@@ -141,8 +149,8 @@ public sealed class PipeWireAudioBackend : IAudioBackend
             if (process.ExitCode != 0)
             {
                 error = string.IsNullOrWhiteSpace(stderr)
-                    ? $"pactl завершился с кодом {process.ExitCode}."
-                    : $"pactl: {stderr.Trim()}";
+                    ? $"{fileName} завершился с кодом {process.ExitCode}."
+                    : $"{fileName}: {stderr.Trim()}";
                 return null;
             }
 
@@ -150,12 +158,41 @@ public sealed class PipeWireAudioBackend : IAudioBackend
         }
         catch (Exception ex)
         {
-            error = $"pactl: {ex.Message}";
+            error = $"{fileName}: {ex.Message}";
             return null;
         }
     }
 
-    private static void ParseDevices(string json, bool isInput, List<AudioDeviceInfo> devices)
+    /// <summary>
+    /// Переключает физический разъём источника или стока средствами pactl.
+    /// Например, встроенный микрофон ↔ микрофон гарнитуры.
+    /// </summary>
+    public bool TrySelectPort(string deviceId, string portId, bool isInput, out string error)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            error = "Выбор разъёма доступен только в PipeWire.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(portId))
+        {
+            error = "Не задано устройство или разъём.";
+            return false;
+        }
+
+        var arguments = isInput
+            ? new[] { "set-source-port", deviceId, portId }
+            : new[] { "set-sink-port", deviceId, portId };
+
+        return RunPactl(arguments, out error) is not null;
+    }
+
+    private static void ParseDevices(
+        string json,
+        bool isInput,
+        List<AudioDeviceInfo> devices,
+        IReadOnlyDictionary<string, PipeWireCard> cards)
     {
         using var document = JsonDocument.Parse(json);
         if (document.RootElement.ValueKind != JsonValueKind.Array)
@@ -201,6 +238,13 @@ public sealed class PipeWireAudioBackend : IAudioBackend
                 description = id;
             }
 
+            var cardName = Clean(GetString(properties, "device.name"));
+            cards.TryGetValue(cardName, out var card);
+
+            var activePortId = Clean(GetString(item, "active_port"));
+            var activeRoute = card?.Routes.FirstOrDefault(route =>
+                string.Equals(route.Id, activePortId, StringComparison.Ordinal));
+
             var channelMapRaw = Clean(GetString(item, "channel_map"));
             if (channelMapRaw.Length == 0)
             {
@@ -243,25 +287,37 @@ public sealed class PipeWireAudioBackend : IAudioBackend
                 });
 
             var isMicrophone = searchText.Contains("mic", StringComparison.OrdinalIgnoreCase);
-            var jackType = isInput
-                ? (isMicrophone ? AudioJackType.Microphone : AudioJackType.LineIn)
-                : AudioJackType.LineOut;
+            var jackType = activeRoute?.JackType
+                ?? (isInput
+                    ? (isMicrophone ? AudioJackType.Microphone : AudioJackType.LineIn)
+                    : AudioJackType.LineOut);
 
             var channelInfos = new List<AudioChannelInfo>(channels);
             for (var i = 0; i < channels; i++)
             {
-                var channelName = i < channelNames.Length ? Clean(channelNames[i]) : "";
-                if (channelName.Length == 0)
-                {
-                    channelName = $"Канал {i + 1}";
-                }
-
+                var channelName = DescribeChannelName(
+                    i < channelNames.Length ? channelNames[i] : "",
+                    i);
                 channelInfos.Add(new AudioChannelInfo(i, channelName, isInput, jackType));
             }
 
+            var ports = !isMonitor && card is { Routes.Count: > 0 }
+                ? AudioPortTopology.Build(card.Routes)
+                : Array.Empty<AudioPortInfo>();
+
+            var nodeNick = Clean(GetString(properties, "node.nick"));
+            var displayName = MakeUniqueName(
+                devices,
+                BuildDeviceName(isInput, isMonitor, description, nodeNick));
+
+            var isDigital = jackType is AudioJackType.Digital or AudioJackType.Monitor;
+            var supportsDuplex = card is not null
+                                 && card.Routes.Any(route => route.IsInput)
+                                 && card.Routes.Any(route => !route.IsInput);
+
             devices.Add(new AudioDeviceInfo(
                 id,
-                description,
+                displayName,
                 BackendName,
                 IsInput: isInput,
                 IsOutput: !isInput,
@@ -271,20 +327,83 @@ public sealed class PipeWireAudioBackend : IAudioBackend
                 SampleRates,
                 channelInfos,
                 new DeviceCapabilities(
-                    SupportsDuplex: true,
-                    IsAcCoupled: true,
-                    MaxInputVoltageRms: 1.0,
+                    SupportsDuplex: supportsDuplex,
+                    IsAcCoupled: !isDigital,
+                    MaxInputVoltageRms: isDigital ? null : 1.0,
                     SupportsExclusiveMode: false,
                     SupportsLoopback: true,
                     SupportsChannelMapping: true,
-                    Notes: "Раздельные потоки входа/выхода; возможен дрейф частоты — используйте ресинхронизацию.",
-                    MaxInputCurrentMa: 0.1,
-                    InputImpedanceOhms: 10000,
+                    Notes: isDigital
+                        ? "Цифровой интерфейс: параметры 3,5-мм аналогового входа неприменимы."
+                        : "Раздельные потоки входа/выхода; возможен дрейф частоты — используйте ресинхронизацию.",
+                    MaxInputCurrentMa: isDigital ? null : 0.1,
+                    InputImpedanceOhms: isDigital ? null : 10000,
                     MinFrequencyHz: 20,
                     MaxFrequencyHz: Math.Min(20000, DefaultSampleRate * 0.5),
                     BitDepth: ParseBitDepth(GetString(properties, "alsa.resolution_bits"))),
-                IsMonitor: isMonitor));
+                IsMonitor: isMonitor)
+            {
+                CardId = cardName,
+                ActivePortId = activePortId,
+                Ports = ports,
+            });
         }
+    }
+
+    private static string BuildDeviceName(
+        bool isInput,
+        bool isMonitor,
+        string description,
+        string nodeNick)
+    {
+        var prefix = isMonitor ? "Монитор" : isInput ? "Вход" : "Выход";
+        var name = $"{prefix} · {description}";
+
+        if (!string.IsNullOrWhiteSpace(nodeNick)
+            && !description.Contains(nodeNick, StringComparison.OrdinalIgnoreCase))
+        {
+            name = $"{prefix} · {nodeNick} · {description}";
+        }
+
+        return name;
+    }
+
+    private static string MakeUniqueName(List<AudioDeviceInfo> devices, string name)
+    {
+        if (!devices.Any(device => string.Equals(device.Name, name, StringComparison.Ordinal)))
+        {
+            return name;
+        }
+
+        for (var index = 2; ; index++)
+        {
+            var candidate = $"{name} ({index})";
+            if (!devices.Any(device => string.Equals(device.Name, candidate, StringComparison.Ordinal)))
+            {
+                return candidate;
+            }
+        }
+    }
+
+    private static string DescribeChannelName(string raw, int index)
+    {
+        var name = Clean(raw);
+        if (name.Length == 0)
+        {
+            return $"Канал {index + 1}";
+        }
+
+        return name.ToLowerInvariant() switch
+        {
+            "front-left" or "fl" => "Левый",
+            "front-right" or "fr" => "Правый",
+            "mono" => "Моно",
+            "front-center" or "fc" => "Центр",
+            "rear-left" or "rl" => "Левый тыл",
+            "rear-right" or "rr" => "Правый тыл",
+            "lfe" => "Сабвуфер",
+            _ => name,
+        };
     }
 
     private static int? ParseBitDepth(string value)
