@@ -99,6 +99,7 @@ public sealed record AudioDeviceInfo(
     public string CardId { get; init; }
     public string StreamId { get; init; }
     public string PortId { get; init; }
+    public string PortName { get; init; }
     public string ControllerName { get; init; }
     public string EffectiveStreamId { get; }
     public string ActivePortId { get; init; }
@@ -471,9 +472,14 @@ public sealed class InputBus : ISignalBus, IDisposable
 {
     public InputBus(string name, string deviceId, int physicalChannel, int sampleRate,
                     CalibrationProfile? calibration = null);
+    public InputBus(string name, int sampleRate, CalibrationProfile? calibration = null);
+
     public string DeviceId { get; }
     public int PhysicalChannel { get; }
+    public bool IsConnected { get; }
     public string Description { get; }
+
+    public void Connect(string deviceId, int physicalChannel);
     public void Configure(int sampleRate);
     public void Start();
     public void Stop();
@@ -497,11 +503,15 @@ public sealed class VirtualInputBus : ISignalBus, IDisposable
 public sealed class OutputBus
 {
     public OutputBus(string name, string deviceId, int physicalChannel);
+    public OutputBus(string name);
+
     public string DeviceId { get; }
     public int PhysicalChannel { get; }
+    public bool IsConnected { get; }
     public bool Enabled { get; set; }
     public double Gain { get; set; }
     public ModulationChain Modulation { get; }
+    public void Connect(string deviceId, int physicalChannel);
     public float[] GenerateMonoBlock(int sampleRate, int frames);
 }
 
@@ -534,8 +544,12 @@ public sealed class AudioEngine : IDisposable
     public event EventHandler? RoutesChanged;
     public void RefreshDevices();
     public InputBus AddInput(AudioDeviceInfo device, int physicalChannel, string? name = null);
+    public InputBus AddInput(string? name = null);
+    public void ReconnectInput(InputBus bus, AudioDeviceInfo device, int physicalChannel);
     public void RemoveInput(InputBus bus);
     public OutputBus AddOutput(AudioDeviceInfo device, int physicalChannel, string? name = null);
+    public OutputBus AddOutput(string? name = null);
+    public void ReconnectOutput(OutputBus bus, AudioDeviceInfo device, int physicalChannel);
     public void RemoveOutput(OutputBus bus);
     public VirtualInputBus AddVirtualInput(string? name, IEnumerable<FusionSource> sources, FusionMode mode);
     public void RemoveVirtualInput(VirtualInputBus bus);

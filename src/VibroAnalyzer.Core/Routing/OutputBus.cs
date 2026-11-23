@@ -26,18 +26,17 @@ public sealed class OutputBus : ISignalBus, IDisposable
     private bool _disposed;
 
     public OutputBus(string name, string deviceId, int physicalChannel)
+        : this(name)
+    {
+        Connect(deviceId, physicalChannel);
+    }
+
+    /// <summary>Создаёт логический выход без физического подключения.</summary>
+    public OutputBus(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
-
-        if (physicalChannel < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(physicalChannel));
-        }
 
         Name = name;
-        DeviceId = deviceId;
-        PhysicalChannel = physicalChannel;
         Modulation = new ModulationChain();
         Calibration = new CalibrationProfile();
         Demodulation = new DemodulationChain();
@@ -49,9 +48,14 @@ public sealed class OutputBus : ISignalBus, IDisposable
 
     public string Name { get; set; }
 
-    public string DeviceId { get; }
+    /// <summary>Идентификатор устройства; пусто, если выход ещё не подключён.</summary>
+    public string DeviceId { get; private set; } = "";
 
-    public int PhysicalChannel { get; }
+    /// <summary>Физический канал устройства; -1, если выход ещё не подключён.</summary>
+    public int PhysicalChannel { get; private set; } = -1;
+
+    /// <summary>Есть ли привязка к физическому каналу.</summary>
+    public bool IsConnected => !string.IsNullOrWhiteSpace(DeviceId) && PhysicalChannel >= 0;
 
     /// <summary>Признак участия выхода в миксе устройства.</summary>
     public bool Enabled { get; set; } = true;
@@ -63,7 +67,24 @@ public sealed class OutputBus : ISignalBus, IDisposable
     public ModulationChain Modulation { get; }
 
     /// <summary>Краткое описание для интерфейса.</summary>
-    public string Description => $"канал {PhysicalChannel + 1}";
+    public string Description => IsConnected ? $"канал {PhysicalChannel + 1}" : "не подключён";
+
+    /// <summary>Привязывает логический выход к физическому каналу устройства.</summary>
+    public void Connect(string deviceId, int physicalChannel)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
+        if (physicalChannel < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(physicalChannel));
+        }
+
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            DeviceId = deviceId;
+            PhysicalChannel = physicalChannel;
+        }
+    }
 
     public int SampleRate
     {

@@ -144,7 +144,6 @@ public sealed class AudioEngine : IDisposable
         {
             EnsureStopped();
             ValidateInputDevice(device, physicalChannel);
-            ValidatePortConflict(_inputs.Select(input => input.DeviceId), device);
 
             bus = new InputBus(
                 name ?? $"Вход {_inputs.Count + 1}",
@@ -158,6 +157,46 @@ public sealed class AudioEngine : IDisposable
 
         RoutesChanged?.Invoke(this, EventArgs.Empty);
         return bus;
+    }
+
+    /// <summary>Создаёт логический вход без физического подключения.</summary>
+    public InputBus AddInput(string? name = null)
+    {
+        InputBus bus;
+
+        lock (_sync)
+        {
+            EnsureStopped();
+            bus = new InputBus(
+                name ?? $"Датчик {_inputs.Count + 1}",
+                SampleRate,
+                CreateCalibration());
+            _inputs.Add(bus);
+        }
+
+        RoutesChanged?.Invoke(this, EventArgs.Empty);
+        return bus;
+    }
+
+    /// <summary>Переподключает существующий логический вход к другому каналу.</summary>
+    public void ReconnectInput(InputBus bus, AudioDeviceInfo device, int physicalChannel)
+    {
+        ArgumentNullException.ThrowIfNull(bus);
+        ArgumentNullException.ThrowIfNull(device);
+
+        lock (_sync)
+        {
+            EnsureStopped();
+            if (!_inputs.Contains(bus))
+            {
+                throw new InvalidOperationException("Вход не принадлежит этому движку.");
+            }
+
+            ValidateInputDevice(device, physicalChannel);
+            bus.Connect(device.Id, physicalChannel);
+        }
+
+        RoutesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Удаляет логический вход.</summary>
@@ -196,7 +235,6 @@ public sealed class AudioEngine : IDisposable
         {
             EnsureStopped();
             ValidateOutputDevice(device, physicalChannel);
-            ValidatePortConflict(_outputs.Select(output => output.DeviceId), device);
 
             bus = new OutputBus(
                 name ?? $"Выход {_outputs.Count + 1}",
@@ -208,6 +246,43 @@ public sealed class AudioEngine : IDisposable
 
         RoutesChanged?.Invoke(this, EventArgs.Empty);
         return bus;
+    }
+
+    /// <summary>Создаёт логический выход без физического подключения.</summary>
+    public OutputBus AddOutput(string? name = null)
+    {
+        OutputBus bus;
+
+        lock (_sync)
+        {
+            EnsureStopped();
+            bus = new OutputBus(name ?? $"Выход {_outputs.Count + 1}");
+            _outputs.Add(bus);
+        }
+
+        RoutesChanged?.Invoke(this, EventArgs.Empty);
+        return bus;
+    }
+
+    /// <summary>Переподключает существующий логический выход к другому каналу.</summary>
+    public void ReconnectOutput(OutputBus bus, AudioDeviceInfo device, int physicalChannel)
+    {
+        ArgumentNullException.ThrowIfNull(bus);
+        ArgumentNullException.ThrowIfNull(device);
+
+        lock (_sync)
+        {
+            EnsureStopped();
+            if (!_outputs.Contains(bus))
+            {
+                throw new InvalidOperationException("Выход не принадлежит этому движку.");
+            }
+
+            ValidateOutputDevice(device, physicalChannel);
+            bus.Connect(device.Id, physicalChannel);
+        }
+
+        RoutesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Удаляет логический выход.</summary>
@@ -661,6 +736,11 @@ public sealed class AudioEngine : IDisposable
 
         foreach (var input in _inputs)
         {
+            if (!input.IsConnected)
+            {
+                continue;
+            }
+
             var device = FindDevice(input.DeviceId)
                 ?? throw new InvalidOperationException(
                     $"Устройство входа «{input.DeviceId}» больше недоступно.");
@@ -677,6 +757,11 @@ public sealed class AudioEngine : IDisposable
 
         foreach (var output in _outputs)
         {
+            if (!output.IsConnected)
+            {
+                continue;
+            }
+
             var device = FindDevice(output.DeviceId)
                 ?? throw new InvalidOperationException(
                     $"Устройство выхода «{output.DeviceId}» больше недоступно.");
@@ -919,33 +1004,6 @@ public sealed class AudioEngine : IDisposable
         }
 
         return null;
-    }
-
-    private void ValidatePortConflict(IEnumerable<string> existingDeviceIds, AudioDeviceInfo device)
-    {
-        if (string.IsNullOrWhiteSpace(device.PortId))
-        {
-            return;
-        }
-
-        foreach (var existingId in existingDeviceIds)
-        {
-            var existing = FindDevice(existingId);
-            if (existing is null
-                || !string.Equals(
-                    existing.EffectiveStreamId,
-                    device.EffectiveStreamId,
-                    StringComparison.Ordinal)
-                || string.IsNullOrWhiteSpace(existing.PortId)
-                || string.Equals(existing.PortId, device.PortId, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            throw new InvalidOperationException(
-                $"Нельзя одновременно использовать разные разъёмы одного устройства "
-                + $"«{device.Name}». Выберите один разъём.");
-        }
     }
 
     private static void ValidateInputDevice(AudioDeviceInfo device, int physicalChannel)

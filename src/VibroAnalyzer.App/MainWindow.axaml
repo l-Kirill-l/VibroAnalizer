@@ -65,16 +65,10 @@
                             <StackPanel Spacing="10">
                                 <TextBlock Classes="module-label" Text="ВХОДЫ И ДАТЧИКИ" />
                                 <TextBlock Classes="hint"
-                                           Text="Один физический канал можно превратить в отдельный логический вход. На один канал допускается несколько входов — например, для разных окон или обработки." />
+                                           Text="Добавьте логический датчик, затем нажмите «Подключение» и выберите карту, порт и канал. На один физический канал можно подключить несколько датчиков." />
 
                                 <WrapPanel>
-                                    <TextBlock Classes="label" Text="УСТРОЙСТВО" Margin="0,0,7,0" />
-                                    <ComboBox x:Name="InputDeviceCombo" Width="300" Margin="0,0,12,0" />
-                                    <TextBlock Classes="label" Text="КАНАЛ" Margin="0,0,7,0" />
-                                    <NumericUpDown x:Name="InputChannelBox" Width="80" Margin="0,0,12,0"
-                                                   Minimum="0" Maximum="7" Increment="1"
-                                                   FormatString="0" ClipValueToMinMax="True" Value="0" />
-                                    <Button x:Name="AddInputButton" Content="Добавить" Margin="0,0,8,0" />
+                                    <Button x:Name="AddInputButton" Content="Добавить датчик" Margin="0,0,8,0" />
                                     <Button x:Name="OverlayButton" Content="Наложение" />
                                 </WrapPanel>
 
@@ -86,16 +80,10 @@
                             <StackPanel Spacing="10">
                                 <TextBlock Classes="module-label" Text="ВЫХОДЫ И МОДУЛЯЦИИ" />
                                 <TextBlock Classes="hint"
-                                           Text="Каждый выход — независимая несущая и модуляция на своём физическом канале. Несколько выходов могут делить один канал: сигналы складываются." />
+                                           Text="Добавьте выход, затем нажмите «Подключение» и выберите карту, выходной порт и канал. Несколько выходов могут делить один канал: сигналы складываются." />
 
                                 <WrapPanel>
-                                    <TextBlock Classes="label" Text="УСТРОЙСТВО" Margin="0,0,7,0" />
-                                    <ComboBox x:Name="OutputDeviceCombo" Width="300" Margin="0,0,12,0" />
-                                    <TextBlock Classes="label" Text="КАНАЛ" Margin="0,0,7,0" />
-                                    <NumericUpDown x:Name="OutputChannelBox" Width="80" Margin="0,0,12,0"
-                                                   Minimum="0" Maximum="7" Increment="1"
-                                                   FormatString="0" ClipValueToMinMax="True" Value="0" />
-                                    <Button x:Name="AddOutputButton" Content="Добавить" />
+                                    <Button x:Name="AddOutputButton" Content="Добавить выход" />
                                 </WrapPanel>
 
                                 <StackPanel x:Name="OutputsPanel" />
@@ -146,35 +134,33 @@
                     <StackPanel Spacing="12">
                         <Border Classes="card">
                             <StackPanel Spacing="8">
-                                <TextBlock Classes="module-label" Text="УСТРОЙСТВА И РАЗЪЁМЫ" />
-                                <TextBlock x:Name="InfoText" Classes="hint" />
+                                <TextBlock Classes="module-label" Text="КАРТА И ПОРТ" />
 
-                                <TextBlock Classes="module-label" Text="ВЫБОР УСТРОЙСТВА / РАЗЪЁМА"
-                                           Margin="0,4,0,0" />
-                                <ComboBox x:Name="ChannelCombo"
+                                <TextBlock Classes="label" Text="КАРТА" Margin="0,2,0,0" />
+                                <ComboBox x:Name="InspectorCardCombo"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="Выберите карту" />
+
+                                <TextBlock Classes="label" Text="ПОРТ" Margin="0,4,0,0" />
+                                <ComboBox x:Name="InspectorPortCombo"
                                           HorizontalAlignment="Stretch"
                                           MaxDropDownHeight="360"
-                                          PlaceholderText="Выберите канал или разъём" />
-                                <TextBlock x:Name="ChannelSpecsText" Classes="hint" />
-                                <TextBlock x:Name="ChannelHint" Classes="hint" />
+                                          PlaceholderText="Выберите вход или выход" />
 
-                                <TextBlock Classes="module-label" Text="ПИНЫ ВЫБРАННОГО РАЗЪЁМА"
+                                <TextBlock x:Name="InspectorInfoText" Classes="hint" />
+
+                                <TextBlock Classes="module-label" Text="КАНАЛЫ ПОРТА"
                                            Margin="0,4,0,0" />
-                                <Border x:Name="PinTableBorder" Classes="pin-table">
+                                <Border Classes="pin-table">
                                     <StackPanel Spacing="6">
-                                        <Grid x:Name="PinTable"
-                                              ColumnDefinitions="46,72"
-                                              RowDefinitions="Auto,Auto,Auto,Auto,Auto"
-                                              ColumnSpacing="10" RowSpacing="3" />
-                                        <TextBlock x:Name="PinPurposeText" Classes="hint" />
+                                        <Grid x:Name="ChannelTable"
+                                              ColumnDefinitions="46,*,110,66"
+                                              ColumnSpacing="8" RowSpacing="3" />
+                                        <TextBlock x:Name="PortHintText" Classes="hint" />
                                     </StackPanel>
                                 </Border>
-                                <TextBlock Classes="hint"
-                                           Text="R — вход, W — выход, RW — двунаправленный, — — контакт отсутствует." />
-                                <Button x:Name="ActivatePortButton"
-                                        Content="Активировать вход"
-                                        Classes="small"
-                                        HorizontalAlignment="Left" />
+                                <TextBlock x:Name="ChannelHint" Classes="hint"
+                                           Text="Уровень и занятость обновляются автоматически." />
                             </StackPanel>
                         </Border>
 

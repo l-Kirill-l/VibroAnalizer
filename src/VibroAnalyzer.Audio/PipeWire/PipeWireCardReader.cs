@@ -116,15 +116,16 @@ internal static class PipeWireCardReader
 
             var availability = ParseAvailability(GetString(route, "available"));
             var (portType, group) = ParsePortInfo(route);
+            var jackType = MapJackType(portType, id, isInput);
 
             routes.Add(new AudioPortRoute(
                 id,
                 description,
                 isInput,
-                MapJackType(portType, id, isInput),
+                jackType,
                 availability,
                 group,
-                Channels: 2));
+                GetRouteChannels(jackType, isInput)));
         }
 
         return routes;
@@ -246,14 +247,19 @@ internal static class PipeWireCardReader
                 ? props
                 : default;
 
+            var jackType = MapJackType(
+                GetString(portProperties, "port.type"),
+                id,
+                isInput);
+
             routes.Add(new AudioPortRoute(
                 id,
                 description,
                 isInput,
-                MapJackType(GetString(portProperties, "port.type"), id, isInput),
+                jackType,
                 PortAvailability.Unknown,
                 Clean(GetString(port, "availability_group")),
-                Channels: 2));
+                GetRouteChannels(jackType, isInput)));
         }
 
         return routes;
@@ -294,6 +300,15 @@ internal static class PipeWireCardReader
             "yes" or "available" => PortAvailability.Available,
             "no" or "unavailable" => PortAvailability.Unavailable,
             _ => PortAvailability.Unknown,
+        };
+    }
+
+    private static int GetRouteChannels(AudioJackType jackType, bool isInput)
+    {
+        return jackType switch
+        {
+            AudioJackType.Microphone or AudioJackType.Headset => 1,
+            _ => 2,
         };
     }
 

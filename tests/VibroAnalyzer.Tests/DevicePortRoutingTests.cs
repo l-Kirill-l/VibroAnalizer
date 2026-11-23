@@ -24,18 +24,35 @@ public sealed class DevicePortRoutingTests
     }
 
     [Fact]
-    public void DifferentPortsOfSameStreamCannotBeUsedAsSeparateInputs()
+    public void DifferentPortsOfSameStreamCanBeAddedSeparately()
     {
         var internalMic = CreateInput("logical-internal", "source", "internal");
         var headsetMic = CreateInput("logical-headset", "source", "headset");
 
         using var engine = CreateEngine(new[] { internalMic, headsetMic });
         engine.AddInput(internalMic, 0);
+        engine.AddInput(headsetMic, 0);
 
-        var exception = Assert.Throws<InvalidOperationException>(
-            () => engine.AddInput(headsetMic, 0));
+        Assert.Equal(2, engine.Inputs.Count);
+    }
 
-        Assert.Contains("разъёмы", exception.Message);
+    [Fact]
+    public void UnconnectedInputCanBeCreatedAndConnectedLater()
+    {
+        var internalMic = CreateInput("logical-internal", "source", "internal");
+
+        using var engine = CreateEngine(new[] { internalMic });
+        var bus = engine.AddInput("Датчик 1");
+
+        Assert.False(bus.IsConnected);
+        Assert.Equal("Датчик 1", bus.Name);
+
+        engine.ReconnectInput(bus, internalMic, 0);
+
+        Assert.True(bus.IsConnected);
+        Assert.Equal(internalMic.Id, bus.DeviceId);
+        Assert.Equal(0, bus.PhysicalChannel);
+        Assert.Equal("Датчик 1", bus.Name);
     }
 
     [Fact]
@@ -51,18 +68,30 @@ public sealed class DevicePortRoutingTests
     }
 
     [Fact]
-    public void DifferentPortsOfSameStreamCannotBeUsedAsSeparateOutputs()
+    public void DifferentOutputPortsCanBeAddedSeparately()
     {
         var speakers = CreateOutput("logical-speakers", "sink", "speakers");
         var headphones = CreateOutput("logical-headphones", "sink", "headphones");
 
         using var engine = CreateEngine(new[] { speakers, headphones });
         engine.AddOutput(speakers, 0);
+        engine.AddOutput(headphones, 0);
 
-        var exception = Assert.Throws<InvalidOperationException>(
-            () => engine.AddOutput(headphones, 0));
+        Assert.Equal(2, engine.Outputs.Count);
+    }
 
-        Assert.Contains("разъёмы", exception.Message);
+    [Fact]
+    public void UnconnectedOutputCanBeCreatedAndConnectedLater()
+    {
+        var speakers = CreateOutput("logical-speakers", "sink", "speakers");
+
+        using var engine = CreateEngine(new[] { speakers });
+        var bus = engine.AddOutput("Выход 1");
+
+        Assert.False(bus.IsConnected);
+        engine.ReconnectOutput(bus, speakers, 0);
+        Assert.True(bus.IsConnected);
+        Assert.Equal(speakers.Id, bus.DeviceId);
     }
 
     private static AudioEngine CreateEngine(IReadOnlyList<AudioDeviceInfo> devices)
